@@ -4,11 +4,14 @@ library(prodlim)
 library(mstate)
 library(flexsurv)
 library(rstpm2)
+library(ggplot2)
+library(data.table)
+
 
 set.seed(1202)
 
 # Sample size, single covariate
-n <- 2500
+n <- 5000#2500
 X <- rbinom(n, 1, 0.5)
 betaX_sd_cause1 <- log(2)
 betaX_cs_cause2 <- log(1.25)
@@ -74,6 +77,25 @@ legend(
   ), bty = "n"
 )
 
+# Check cumincs
+plot(
+  t_grid,
+  1 - exp(-cumul_sd_cause1(t_grid, x = 1)),
+  type = "l",
+  xlab = "Time",
+  ylab = "Cumulative incidence"
+)
+lines(t_grid, 1 - exp(-cumul_sd_cause1(t_grid, x = 0)), lty = 2)
+legend(
+  "bottomright",
+  col = c("black", "black"),
+  lty = 1:2,
+  legend = c(
+    "Cause 1 (X = 1)",
+    "Cause 1 (X = 0)"
+  ), bty = "n"
+)
+
 # Need this to generate event times
 cumul_cs_cause1 <- Vectorize(function(t, x) {
   -log(1 - vector_denom(t, x))
@@ -118,9 +140,47 @@ mod_fg_cause1$crrFit$coef
 
 # Check the time-dependent effect of cause-specific 1
 mod_cs_cause1 <- coxph(Surv(time, delta == 1) ~ X, data = dat)
-plot(cox.zph(mod_cs_cause1, terms = TRUE))
+zph_obj <- cox.zph(mod_cs_cause1, terms = TRUE)
+logHR_betaX_cause1 <- log(cs_cause1(zph_obj$time, x = 1) / cs_cause1(zph_obj$time, x = 0))
+coef(mod_cs_cause1)
+plot(zph_obj)
+lines(log(zph_obj$time), logHR_betaX_cause1, lwd = 2)
+points(zph_obj$time, log(zph_obj$y))
+
+library(magrittr)
+data.frame("time" = zph_obj$time, "resid" = drop(zph_obj$y)) %>%
+  ggplot(aes(time, resid)) +
+  geom_point() +
+  geom_smooth(se = FALSE) +
+  geom_line(aes(zph_obj$time, logHR_betaX_cause1))
 
 
+# Trying non-param --------------------------------------------------------
+
+
+cuminc_all <- cmprsk::cuminc(dat$time, dat$delta, group = dat$X)
+plot(cuminc_all)
+
+#cumhaz_nonparam <- -log(1 - df_unique$est)
+plot(cuminc_all$`0 1`$time, -log(1 - cuminc_all$`0 1`$est), type = "l", ylim = c(0, 1), lty = "dotted")
+lines(cuminc_all$`1 1`$time, -log(1 - cuminc_all$`1 1`$est), type = "l", ylim = c(0, 1), lty = "dotted")
+
+lines(cuminc_all$`0 1`$time, cumul_sd_cause1(t = cuminc_all$`0 1`$time, x = 0))
+lines(cuminc_all$`0 1`$time, cumul_sd_cause1(t = cuminc_all$`0 1`$time, x = 1))
+points(dato$time, dato$sd_cumhaz_x, ylim = c(0,1))
+
+
+# Try a cumul hazard
+dato <- data.table(dat)
+setorder(dato, time)
+dato[, "risk_set" := .N - cumsum(delta == 1)]
+dato[, "sd_cumhaz" := cumsum(as.numeric(delta == 1) / risk_set)]
+
+setorder(dato, X, time)
+dato[, "risk_set_x" := .N - cumsum(delta == 1), by = X]
+dato[, "sd_cumhaz_x" := cumsum(as.numeric(delta == 1) / risk_set_x), , by = X]
+
+points(dato$time, dato$sd_cumhaz_x, ylim = c(0,1))
 
 # Try estimating back baseline hazard -------------------------------------
 
