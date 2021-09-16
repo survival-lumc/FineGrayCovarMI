@@ -22,15 +22,15 @@ dat[, "Z" := pmin(3, pmax(Z, -3))]
 
 # Set parameters
 params_sd_cause1 <- list(
-  "base_rate" = 0.1,
+  "base_rate" = 0.15,
   "base_cuminc" = 0.25, # Baseline cumulative incidence for t -> infinity
-  "beta_X" = 0.5,
+  "beta_X" = 0.75,
   "beta_Z" = 0.25
 )
 
 params_cs_cause2 <- list(
-  "base_rate" = 0.1, #0.01, #0.05,
-  "shape" = 0.75, #0.75, # Decreasing hazard
+  "base_rate" = 0.25, #0.01, #0.05,
+  "base_shape" = 0.5, #0.75, # Decreasing hazard
   "gamma_X" = 0.5,
   "gamma_Z" = -0.25
 )
@@ -51,9 +51,9 @@ haz_cs_cause2 <- function(t, x, params, type = "hazard") {
   lp <- params[["gamma_X"]] * x[["X"]] + params[["gamma_Z"]] * x[["Z"]]
   rate <- params[["base_rate"]] * exp(lp)
   if (type == "hazard") {
-    rate * params[["shape"]] * t^(params[["shape"]] - 1)
+    rate * params[["base_shape"]] * t^(params[["base_shape"]] - 1)
   } else {
-    rate * t^params[["shape"]]
+    rate * t^params[["base_shape"]]
   }
 }
 
@@ -76,18 +76,12 @@ integral_haz_cause1 <- Vectorize(function(t, x, params_sd_cause1, params_cs_caus
   )
 
   # Try integrating
-  val <- try(
-    expr = do.call(stats::integrate, args),
-    silent = TRUE
-  )
+  val <- try(expr = do.call(integrate, args), silent = TRUE)
 
   # t probably very large, take Inf as upper instead to avoid errors
   if (inherits(val, "try-error")) {
     args$upper <- Inf
-    val_infty <- try(
-      expr = do.call(stats::integrate, args),
-      silent = TRUE
-    )
+    val_infty <- try(expr = do.call(integrate, args), silent = TRUE)
 
     if (inherits(val_infty, "try-error")) {
       # Check covar values
@@ -196,7 +190,9 @@ melt.data.table(
     size = 1.25,
     alpha = 0.8
   ) +
-  coord_cartesian() +
+  coord_cartesian(
+    #ylim = c(0, 0.1)
+  ) +
   facet_grid(X ~ Z) +
   theme_bw()
 
@@ -261,11 +257,30 @@ generate_time <- function(params_sd_cause1,
   }
 }
 
+
+replicate(5, expr = {
+  n <- 500
+  Z <- rnorm(n, sd = 1)
+  X <- rbinom(n, size = 1, prob = plogis(Z))
+  dat <- data.table(id = seq_len(n), X, Z)
+
+  # Restrict
+  dat[, "Z" := pmin(3, pmax(Z, -3))]
+
+  dat[, times := generate_time(
+    params_sd_cause1 = params_sd_cause1,
+    params_cs_cause2 = params_cs_cause2,
+    x = .SD,
+    interval_upper = 1000
+  ), by = id]
+
+}, simplify = F)
+
 dat[, times := generate_time(
   params_sd_cause1 = params_sd_cause1,
   params_cs_cause2 = params_cs_cause2,
   x = .SD,
-  interval_upper = 10000
+  interval_upper = 15
 ), by = id]
 
 hazards_dat <- dat[, .(

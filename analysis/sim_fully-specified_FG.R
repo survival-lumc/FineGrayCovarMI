@@ -1,4 +1,4 @@
-n <- 5000
+n <- 3000
 p <- 0.4
 dat <- data.table(X = rbinom(n, size = 1, 0.5), U = runif(n))
 dat[, D := 1 + rbinom(n, size = 1, prob = (1 - p)^exp(0.5 * X))]
@@ -8,6 +8,17 @@ dat[D == 1, time := -log(
 )]
 mod <- FGR(Hist(time, D) ~ X, cause = 1, data = dat)
 mod$crrFit$coef
+
+haz_direct <- function(t) {
+  p * exp(-t) / (1 - p * (1 - exp(-t)))
+}
+
+prs <- predict(mod, newdata = data.frame("X" = 0))
+plot(mod$crrFit$uftime, as.vector(prs), type = "l")
+lines(mod$crrFit$uftime, p * (1 - exp(-mod$crrFit$uftime)), col = "red", lwd = 2)
+
+plot(mod$crrFit$uftime, mod$crrFit$bfitj)
+plot(mod$crrFit$uftime, haz_direct(mod$crrFit$uftime))
 
 coxph(Surv(time, D == 2) ~ X, data = dat, subset = D == 2)
 
@@ -63,3 +74,10 @@ dat$prob_d_one |> mean()
 dat$prob_d_two |> mean()
 dat$prob_d_one |> hist()
 dat$prob_d_two |> hist()
+
+
+
+# Checking hazard ---------------------------------------------------------
+
+params_fs
+#haz_fs <- function(t)
