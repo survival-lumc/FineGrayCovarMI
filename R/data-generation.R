@@ -24,7 +24,12 @@ rweibull_KM <- function(n, shape, rate) {
 # Helpers for direct methods ----------------------------------------------
 
 
-
+generate_direct_times <- function(U, x, params) {
+  p <- params[["p"]]
+  HR <- exp(params[["beta_X"]] * x[["X"]] + params[["beta_Z"]] * x[["Z"]])
+  val <- -log(1 - (1 - (1 - U * (1 - (1 - p)^HR))^(1 / HR)) / p)
+  (val / params[["base_rate"]])^(1 / params[["base_shape"]])
+}
 
 
 # Helpers for CS/indirect methods -----------------------------------------
@@ -116,5 +121,44 @@ haz_cs_cause1 <- function(t, x, params_sd_cause1, params_cs_cause2, type = "haza
     num / denom
   } else {
     -log(denom)
+  }
+}
+
+invert_surv_cause1 <- function(t, x, params_sd_cause1, params_cs_cause2, U) {
+  H1 <- haz_cs_cause1(t, x, params_sd_cause1, params_cs_cause2, type = "cumulative")
+  exp(-H1) - U
+}
+
+generate_time_cause1 <- function(params_sd_cause1,
+                                 params_cs_cause2,
+                                 x,
+                                 interval_upper = 1e3) {
+  # Generate u
+  U <- runif(1)
+
+  # Evaluate survival at limit
+  surv_upper <- invert_surv_cause1(
+    interval_upper,
+    params_sd_cause1 = params_sd_cause1,
+    params_cs_cause2 = params_cs_cause2,
+    x = x,
+    U = U
+  )
+
+  if (is.nan(surv_upper)) {
+    stop("Woops!")
+  } else if (surv_upper > 0) {
+    interval_upper # and then censor by maxt
+  } else {
+    # Generate time by inversion
+    uniroot(
+      f = invert_surv_cause1,
+      interval = c(.Machine$double.eps, interval_upper),
+      extendInt = "yes",
+      params_sd_cause1 = params_sd_cause1,
+      params_cs_cause2 = params_cs_cause2,
+      x = x,
+      U = U
+    )$root
   }
 }
