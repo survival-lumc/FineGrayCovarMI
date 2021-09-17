@@ -26,8 +26,8 @@ rweibull_KM <- function(n, shape, rate) {
 
 generate_direct_times <- function(U, x, params) {
   p <- params[["p"]]
-  HR <- exp(params[["beta_X"]] * x[["X"]] + params[["beta_Z"]] * x[["Z"]])
-  val <- -log(1 - (1 - (1 - U * (1 - (1 - p)^HR))^(1 / HR)) / p)
+  hr <- exp(x %*% params[["betas"]])
+  val <- -log(1 - (1 - (1 - U * (1 - (1 - p)^hr))^(1 / hr)) / p)
   (val / params[["base_rate"]])^(1 / params[["base_shape"]])
 }
 
@@ -37,7 +37,7 @@ generate_direct_times <- function(U, x, params) {
 
 haz_sd_cause1 <- function(t, x, params, type = "hazard") {
   base <- log(1 / (1 - params[["base_cuminc"]]))
-  lp <- params[["beta_X"]] * x[["X"]] + params[["beta_Z"]] * x[["Z"]]
+  lp <- drop(x %*% params[["betas"]])
 
   if (type == "hazard") {
     params[["base_rate"]] * exp(-params[["base_rate"]] * t / base + lp)
@@ -47,7 +47,7 @@ haz_sd_cause1 <- function(t, x, params, type = "hazard") {
 }
 
 haz_cs_cause2 <- function(t, x, params, type = "hazard") {
-  lp <- params[["gamma_X"]] * x[["X"]] + params[["gamma_Z"]] * x[["Z"]]
+  lp <- drop(x %*% params[["betas"]])
   rate <- params[["base_rate"]] * exp(lp)
   if (type == "hazard") {
     rate * params[["base_shape"]] * t^(params[["base_shape"]] - 1)
@@ -129,10 +129,10 @@ invert_surv_cause1 <- function(t, x, params_sd_cause1, params_cs_cause2, U) {
   exp(-H1) - U
 }
 
-generate_time_cause1 <- function(params_sd_cause1,
-                                 params_cs_cause2,
-                                 x,
-                                 interval_upper = 1e3) {
+generate_indirect_cause1 <- function(params_sd_cause1,
+                                     params_cs_cause2,
+                                     x,
+                                     interval_upper = 1e3) {
   # Generate u
   U <- runif(1)
 
@@ -161,4 +161,124 @@ generate_time_cause1 <- function(params_sd_cause1,
       U = U
     )$root
   }
+}
+
+
+# Full wrapper ------------------------------------------------------------
+
+
+generate_complete_dataset <- function(n = 2000,
+                                      params,
+                                      model_type = c("indirect", "csh_based", "direct", "both_fg"),
+                                      predictor_formulas,
+                                      X_type = "binary",
+                                      control = list("admin_cens_time" = 10, "cens_rate" = 0.001)) {
+
+  # Covariate generation (could even feed this as argument to other function)
+  dat <- data.table(id = seq_len(n), Z = rnorm(n, mean = 0, sd = 1))
+  dat[, "Z" := pmin(3, pmax(Z, -3))] # restrict range
+
+  if (X_type == "binary") {
+    dat[, "X" := factor(rbinom(.N, size = 1, prob = plogis(Z)))]
+  } else {
+    dat[, "X" := rnorm(.N, mean = 0.5 * Z, sd = 1)]
+    dat[, "X" := pmin(3, pmax(X, -3))] # restrict range
+  }
+
+  # Prepare model matrices
+  modmats <- lapply(predictor_formulas, function(form) {
+    x <- model.matrix(form, data = dat)
+    x[, !colnames(x) %in% "(Intercept)"]
+  })
+  x_cause1 <- modmats[["cause1"]]
+  x_cause2 <- modmats[["cause2"]]
+
+  # Generate times
+  model_type <- match.arg(model_type)
+  if (model_type == "indirect") {
+
+    # Generate latent times
+    dat[, T1 := generate_indirect_cause1(
+      params_sd_cause1 = params[["cause1"]],
+      params_cs_cause2 = params[["cause2"]],
+      x = x_cause1[.I, ],
+      interval_upper = control[["admin_cens_time"]]
+    ), by = id]
+
+    dat[, T2 := rweibull_KM(
+      n = n,
+      shape = params[["cause2"]][["base_shape"]],
+      rate = params[["cause2"]][["base_rate"]] * exp(x_cause2 %*% params[["cause2"]][["betas"]])
+    )]
+
+    # Pick minimum
+    dat[, ':=' (D = 1 + as.numeric(T2 < T1), time = pmin(T1, T2))]
+    dat[, c("T1", "T2") := NULL]
+
+  } else if (model_type == "csh_based") {
+
+    # Generate latent times
+    T1 <- rweibull_KM(
+      n = n,
+      shape = params[["cause1"]][["base_shape"]],
+      rate = params[["cause1"]][["base_rate"]] * exp(x_cause1 %*% params[["cause1"]][["betas"]])
+    )
+
+    T2 <- rweibull_KM(
+      n = n,
+      shape = params[["cause2"]][["base_shape"]],
+      rate = params[["cause2"]][["base_rate"]] * exp(x_cause2 %*% params[["cause2"]][["betas"]])
+    )
+
+    # Pick minimum
+    dat[, ':=' (D = 1 + as.numeric(T2 < T1), time = pmin(T1, T2))]
+
+  } else if (model_type == "direct") {
+
+    # Draw event indicator
+    dat[, D := 1 + rbinom(
+      n = .N,
+      size = 1,
+      prob = (1 - params[["cause1"]][["p"]])^exp(x_cause1 %*% params[["cause1"]][["betas"]])
+    )]
+
+    # Draw event times
+    cause1_ind <- dat[["D"]] == 1
+    dat[D == 1, time := generate_direct_times(runif(.N), x_cause1[cause1_ind, ], params[["cause1"]])]
+    dat[D == 2, time := rweibull_KM(
+      n = .N,
+      shape = params[["cause2"]][["base_shape"]],
+      rate = params[["cause2"]][["base_rate"]] * exp(x_cause2[!cause1_ind, ] %*% params[["cause2"]][["betas"]])
+    )]
+
+  } else if (model_type == "both_fg") {
+
+    # Get probabilities at t -> inf
+    p1 <- 1 - (1 - params[["cause1"]][["p"]])^exp(x_cause1 %*% params[["cause1"]][["betas"]])
+    p2 <- 1 - (1 - params[["cause2"]][["p"]])^exp(x_cause2 %*% params[["cause2"]][["betas"]])
+    if (max(p1 + p2) > 1) stop("Total failure prob exceeds once for some people eventually!")
+
+    # Draw event indicator
+    U_ind <- runif(n)
+    dat[, D := fcase(
+      U_ind <= p1, 1,
+      p1 < U_ind & U_ind <= p1 + p2, 2,
+      U_ind > p1 + p2, 0
+    )]
+
+    # Draw event times
+    cause1_ind <- dat[["D"]] == 1
+    cause2_ind <- dat[["D"]] == 2
+    dat[D == 1, time := generate_direct_times(runif(.N), x_cause1[cause1_ind, ], params[["cause1"]])]
+    dat[D == 2, time := generate_direct_times(runif(.N), x_cause2[cause2_ind, ], params[["cause2"]])]
+  }
+
+  # Add standard and normal censoring
+  admin_cens <- control[["admin_cens_time"]]
+  dat[time >= admin_cens | D == 0, ':=' (D = 0, time = admin_cens)]
+  dat[, cens := rexp(n, rate = control[["cens_rate"]])]
+  dat[cens < time, ':=' (D = 0, time = cens)]
+  dat[, cens := NULL]
+
+  return(dat)
 }
