@@ -4,6 +4,8 @@ library(riskRegression)
 library(survival)
 library(mice)
 library(prodlim)
+library(kmi)
+library(smcfcs)
 
 
 # Data-generating functions -----------------------------------------------

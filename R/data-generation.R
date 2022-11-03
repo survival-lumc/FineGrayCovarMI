@@ -176,7 +176,6 @@ generate_complete_dataset <- function(n = 2000,
 
   # Covariate generation (could even feed this as argument to other function)
   dat <- data.table(id = seq_len(n), Z = rnorm(n, mean = 0, sd = 1))
-  dat[, "Z" := pmin(3, pmax(Z, -3))] # restrict range
 
   if (X_type == "binary") {
     dat[, "X" := factor(rbinom(.N, size = 1, prob = plogis(Z)))]
@@ -184,6 +183,8 @@ generate_complete_dataset <- function(n = 2000,
     dat[, "X" := rnorm(.N, mean = 0.5 * Z, sd = 1)]
     dat[, "X" := pmin(3, pmax(X, -3))] # restrict range
   }
+
+  dat[, "Z" := pmin(3, pmax(Z, -3))] # restrict range
 
   # Prepare model matrices
   modmats <- lapply(predictor_formulas, function(form) {
