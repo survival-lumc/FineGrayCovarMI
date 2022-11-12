@@ -1,16 +1,3 @@
-# New tests
-library(data.table)
-library(riskRegression)
-library(survival)
-library(mice)
-library(prodlim)
-library(kmi)
-library(smcfcs)
-library(tidyverse)
-library(broom)
-
-# set.seed(...)
-
 source("R/data-generation.R")
 
 params_direct <- list(

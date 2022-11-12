@@ -208,8 +208,8 @@ generate_complete_dataset <- function(n = 2000,
                                       params,
                                       model_type = c("indirect", "csh_based", "direct", "both_fg"),
                                       predictor_formulas,
-                                      X_type = "binary",
-                                      control = list("admin_cens_time" = 10, "cens_rate" = 0.001)) {
+                                      X_type = c("binary", "normal"),
+                                      control = list("admin_cens_time" = NULL, "cens_rate" = NULL)) {
 
   # Covariate generation (could even feed this as argument to other function)
   dat <- data.table(id = seq_len(n), Z = rnorm(n, mean = 0, sd = 1))
@@ -312,13 +312,12 @@ generate_complete_dataset <- function(n = 2000,
   }
 
   # Add standard and normal censoring
-  cens <- FALSE
-  if (cens) {
-    admin_cens <- control[["admin_cens_time"]]
-    dat[time >= admin_cens | D == 0, ':=' (D = 0, time = admin_cens)]
-    dat[, cens := rexp(n, rate = control[["cens_rate"]])]
+  admin_cens <- control[["admin_cens_time"]]
+  cens_rate <- control[["cens_rate"]]
+  if (!is.null(admin_cens)) dat[time >= admin_cens, ':=' (D = 0, time = admin_cens)]
+  if (!is.null(cens_rate)) {
+    dat[, cens := rexp(.N, rate = cens_rate)]
     dat[cens < time, ':=' (D = 0, time = cens)]
-    dat[, cens := NULL]
   }
 
   return(dat)
