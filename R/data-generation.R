@@ -20,6 +20,43 @@ rweibull_KM <- function(n, shape, rate) {
   (-log(runif(n)) / rate)^(1 / shape)
 }
 
+# Make this into more general function
+add_marginal_cumhaz <- function(timevar,
+                                statusvar, # competing event indicator
+                                cause,
+                                timefix = FALSE,
+                                type = c("cause_spec", "subdist")) {
+
+  type <- match.arg(type)
+
+  # First part is just like mice::nelsonaalen
+  if (type == "cause_spec") {
+    mod <- survival::coxph(
+      Surv(time, status) ~ 1,
+      control = survival::coxph.control(timefix = timefix),
+      data = cbind.data.frame("time" = timevar, "status" = as.numeric(statusvar == cause))
+    )
+  } else {
+    long_dat <- crprep(
+      Tstop = "time",
+      status = "status",
+      data = cbind.data.frame("time" = timevar, "status" = statusvar),
+      trans = cause
+    )
+    mod <- coxph(
+      Surv(Tstart, Tstop, status == 1) ~ 1,
+      data = long_dat,
+      weights = weight.cens,
+      control = survival::coxph.control(timefix = timefix)
+    )
+  }
+
+  # Get cumhaz
+  hazard <- survival::basehaz(mod)
+  idx <- match(timevar, hazard[, "time"])
+  return(hazard[idx, "hazard"])
+}
+
 
 # Helpers for direct methods ----------------------------------------------
 
@@ -181,10 +218,10 @@ generate_complete_dataset <- function(n = 2000,
     dat[, "X" := factor(rbinom(.N, size = 1, prob = plogis(Z)))]
   } else {
     dat[, "X" := rnorm(.N, mean = 0.5 * Z, sd = 1)]
-    dat[, "X" := pmin(3, pmax(X, -3))] # restrict range
+    #dat[, "X" := pmin(3, pmax(X, -3))] # restrict range
   }
 
-  dat[, "Z" := pmin(3, pmax(Z, -3))] # restrict range
+  #dat[, "Z" := pmin(3, pmax(Z, -3))] # restrict range
 
   # Prepare model matrices
   modmats <- lapply(predictor_formulas, function(form) {
@@ -275,11 +312,58 @@ generate_complete_dataset <- function(n = 2000,
   }
 
   # Add standard and normal censoring
-  admin_cens <- control[["admin_cens_time"]]
-  dat[time >= admin_cens | D == 0, ':=' (D = 0, time = admin_cens)]
-  dat[, cens := rexp(n, rate = control[["cens_rate"]])]
-  dat[cens < time, ':=' (D = 0, time = cens)]
-  dat[, cens := NULL]
+  cens <- FALSE
+  if (cens) {
+    admin_cens <- control[["admin_cens_time"]]
+    dat[time >= admin_cens | D == 0, ':=' (D = 0, time = admin_cens)]
+    dat[, cens := rexp(n, rate = control[["cens_rate"]])]
+    dat[cens < time, ':=' (D = 0, time = cens)]
+    dat[, cens := NULL]
+  }
+
+  return(dat)
+}
+
+
+process_pre_imputing <- function(dat) {
+
+  dat[, ':=' (
+    time_star = ifelse(D == 1, time, max(time) + 1e-8), # works better than setting to super large number.. @Hein?
+    D_star = as.numeric(D == 1),
+    miss_ind = rbinom(.N, size = 1, prob = plogis(-0.5 + Z)),
+    X_compl = X,
+    H_cause1 = add_marginal_cumhaz(
+      timevar = time,
+      statusvar = D,
+      cause = 1,
+      type = "cause_spec"
+    ),
+    H_cause2 = add_marginal_cumhaz(
+      timevar = time,
+      statusvar = D,
+      cause = 2,
+      type = "cause_spec"
+    ),
+    H_subdist_cause1 = add_marginal_cumhaz(
+      timevar = time,
+      statusvar = D,
+      cause = 1,
+      type = "subdist"
+    )
+  )]
+
+  dat[, ':=' (
+    X = factor(ifelse(miss_ind == 1, NA_character_, X)), # NA_real_ if continuous
+    D = factor(D), # for imp model
+    H_modif_cause1 = add_marginal_cumhaz(
+      timevar = time_star,
+      statusvar = D_star,
+      cause = 1,
+      type = "cause_spec"
+    )
+  )]
+
+  setorder(dat, "time")
 
   return(dat)
 }

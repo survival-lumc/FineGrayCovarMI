@@ -31,7 +31,7 @@ dat <- generate_complete_dataset(
   n = 2000,
   params = params_direct,
   model_type = "direct",
-  X_type = "binary",
+  X_type = "binary", # For now since faster than
   predictor_formulas = list("cause1" = ~  X + Z, "cause2" = ~ X + Z),
   control = list("admin_cens_time" = 1e20, "cens_rate" = 1e-10)
 )
@@ -305,3 +305,8 @@ smcfcs(
 # comp event indicator somewhere..
 # then just prepare new data at the very first step!
 # https://github.com/jwb133/smcfcs/blob/00f168de0133b550f5166ba8295f8834d6a960fe/R/smcfcs.r#L454
+
+# To-do: round of KMI, generate all (singly imputed datasets)
+# .. then m = 1 in each one
+
+# Capture # of rejection warnings smcfcs
