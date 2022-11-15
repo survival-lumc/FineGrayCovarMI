@@ -318,19 +318,20 @@ generate_complete_dataset <- function(n = 2000,
   if (!is.null(cens_rate)) {
     dat[, cens := rexp(.N, rate = cens_rate)]
     dat[cens < time, ':=' (D = 0, time = cens)]
+    dat[, cens := NULL]
   }
 
   return(dat)
 }
 
-
+# Have some kind of formula interface?
 process_pre_imputing <- function(dat) {
 
   dat[, ':=' (
-    time_star = ifelse(D == 1, time, max(time) + 1e-8), # works better than setting to super large number.. @Hein?
+    time_star = ifelse(D == 1, time, max(time) + 1e-8),
     D_star = as.numeric(D == 1),
     miss_ind = rbinom(.N, size = 1, prob = plogis(-0.5 + Z)),
-    X_compl = X,
+    X_compl = factor(X),
     H_cause1 = add_marginal_cumhaz(
       timevar = time,
       statusvar = D,
@@ -353,13 +354,7 @@ process_pre_imputing <- function(dat) {
 
   dat[, ':=' (
     X = factor(ifelse(miss_ind == 1, NA_character_, X)), # NA_real_ if continuous
-    D = factor(D), # for imp model
-    H_modif_cause1 = add_marginal_cumhaz(
-      timevar = time_star,
-      statusvar = D_star,
-      cause = 1,
-      type = "cause_spec"
-    )
+    D = factor(D) # for imp model
   )]
 
   setorder(dat, "time")

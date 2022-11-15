@@ -1,11 +1,11 @@
-vis_sims
 
 # Need to add 'true' estimates using dataset pre-missings
-dat_nocens <- readRDS("data-raw/sims_nocens.rds") |>
-  mutate(term = fct_recode(term, "X" = "X2")) |>
+data <- #readRDS("data-raw/sims_nocens.rds") |>
+  readRDS("data-raw/sims_cens.rds") |>
+  #mutate(term = fct_recode(term, "X" = "X2")) |>
   mutate(true = case_when(term == "X" ~ 0.75, term == "Z" ~ 0.5))
 
-dat_nocens |>
+data |>
   ggplot(aes(method, estimate, fill = method)) +
   geom_boxplot() +
   theme_minimal(base_size = 22) +
@@ -18,7 +18,7 @@ dat_nocens |>
 
 library(rsimsum)
 sims_summ <- multisimsum(
-  data = dat_nocens,
+  data = data,
   par = "term",
   estvarname = "estimate",
   se = "std.error",
@@ -28,7 +28,7 @@ sims_summ <- multisimsum(
 )
 
 sim_summ_X <- simsum(
-  data = dat_nocens |> filter(term == "X"),
+  data = data |> filter(term == "X"),
   estvarname = "estimate",
   se = "std.error",
   true = "true",
@@ -37,3 +37,7 @@ sim_summ_X <- simsum(
 )
 
 summary(sim_summ_X)
+
+
+# Want plots of subdist and cause-spec hazards..
+# for latter; differentiate cuminc, and diving by event free surv?

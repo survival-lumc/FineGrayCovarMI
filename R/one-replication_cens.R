@@ -40,14 +40,17 @@ one_replication <- function() {
     model_type = "direct",
     X_type = "binary",
     predictor_formulas = list("cause1" = ~ X + Z, "cause2" = ~ X + Z),
-    control = list("admin_cens_time" = NULL, "cens_rate" = NULL)
+    control = list("admin_cens_time" = NULL, "cens_rate" = 0.15) # 20% of obs are censored
   )
 
-  # Add missings
-  dat_to_impute <- process_pre_imputing(dat)
+  # Add missings; note subdist and cause-spec diverge as time goes on
+  process_pre_imputing(dat)
 
   # -- Start
   form <- Hist(time, D) ~ X + Z
+
+  # Method 0: Full data
+  mod_full <- FGR(Hist(time, D) ~ X_compl + Z, data = dat, cause = 1)
 
   # Method 1: CCA
   mod_CCA <- FGR(form, data = dat, cause = 1)
@@ -83,32 +86,50 @@ one_replication <- function() {
     m = m
   )
 
-  # Method 4: MICE w/ modified dataset
-  predmat_modif <- predmat
-  predmat_modif[] <- 0
-  predmat_modif["X", c("Z", "D_star", "H_modif_cause1")] <- 1
+  # Method 5: SMC-FCS w/ modified dataset (do in parallel later!)
 
-  mice_modif <- mice(
+  # Start with kmi step
+  kmi_imps <- kmi(
+    Surv(time, D != 0) ~ 1,
     data = data.frame(dat),
-    method = meths,
-    m = m,
-    maxit = 1,
-    predictorMatrix = predmat_modif,
-    printFlag = FALSE
+    etype = D,
+    failcode = 1,
+    nimp = m
   )
 
-  # Method 5: SMC-FCS w/ modified dataset (do in parallel later!!!)
-  smcfcs_modif <- smcfcs(
-    originaldata = data.frame(dat),
-    smtype = "coxph",
-    smformula = "Surv(time_star, D_star) ~ X + Z",
-    method = meths_smcfcs,
-    rjlimit = rjlimit_smcfcs,
-    numit = iters_smcfcs,
-    m = m
+  # Intermediate methods objects
+  meths_smcfcs <- make.method(
+    cbind(dat, kmi_imps$imputed.data[[1]]),
+    defaultMethod = c("norm", "logreg", "mlogit", "podds")
   )
 
-  # Method 6: MICE w/ cumulative subdistribution hazard
+  # Single smcfcs imp per kmi imputed dataset
+  imp_dats_smcfcs <- lapply(kmi_imps$imputed.data, function(new_outcomes) {
+
+    df_imp <- cbind(kmi_imps$original.data, new_outcomes)
+    df_imp$newevent <- as.numeric(df_imp$newevent) - 1L # Just for smcfcs
+
+    # Use switch for imp methods
+    smcfcs_modif <- smcfcs(
+      originaldata = df_imp,
+      smtype = "coxph",
+      smformula = "Surv(newtimes, newevent) ~ X + Z",
+      method = meths_smcfcs,
+      rjlimit = rjlimit_smcfcs,
+      numit = iters_smcfcs,
+      m = 1L
+    )
+
+    return(smcfcs_modif$impDatasets[[1]])
+  })
+
+  # Pool already here
+  mods_smcfcs <- lapply(
+    imp_dats_smcfcs,
+    function(imp) coxph(Surv(newtimes, newevent) ~ X + Z, data = imp)
+  )
+
+  # Method 6: MICE w/ cumulative subdistribution hazard - (no actual need for kmi)
   predmat_subdist <- predmat
   predmat_subdist[] <- 0
   predmat_subdist["X", c("Z", "D_star", "H_subdist_cause1")] <- 1
@@ -126,41 +147,42 @@ one_replication <- function() {
   imps_dats <- list(
     "mice_comp" = complete(mice_comp, action = "all"),
     "smcfcs_comp" = smcfcs_comp$impDatasets,
-    "mice_modif" = complete(mice_modif, action = "all"),
-    "smcfcs_modif" = smcfcs_modif$impDatasets,
+    #"smcfcs_modif" = smcfcs_modif$impDatasets,
     "mice_subdist" = complete(mice_subdist, action = "all")
   )
 
-  rm(mice_comp, smcfcs_comp, mice_modif, smcfcs_modif, mice_subdist) # probably will need to keep stuff for cuminc prediction..
+  rm(mice_comp, smcfcs_comp, mice_subdist, imp_dats_smcfcs) # probably will need to keep stuff for cuminc prediction..
 
   pooled_estims <- modify_depth(imps_dats, .depth = 1L, .f = ~ {
     mods <- lapply(.x, function(imp) FGR(form, data = imp, cause = 1)$crrFit)
     tidy(pool(mods))
   })
 
-  res <- bind_rows(c(list("CCA" = tidy(mod_CCA$crrFit)), pooled_estims), .id = "method")
+  res <- bind_rows(
+    c(
+      list("full" = tidy(mod_full$crrFit)),
+      list("CCA" = tidy(mod_CCA$crrFit)),
+      pooled_estims,
+      list("SMC-FCS + kmi" = tidy(pool(mods_smcfcs)))
+    ), .id = "method"
+  ) |>
+    mutate(term = fct_collapse(term, "X" = c("X_compl1", "X2"), "Z" = "Z"))
   return(res)
 }
 
+set.seed(8762469)
 system.time({
-  test <- map_dfr(seq_len(2L), .f = ~ {
+  test <- map_dfr(seq_len(10L), .f = ~ {
     cat(paste0("\n\nReplication #", .x, "\n\n"))
     one_replication()
   })
 })
 
-saveRDS(test, "sims_nocens.rds")
-
-# test |>
-#   ggplot(aes(term, estimate, fill = method)) +
-#   geom_boxplot() +
-#   theme_minimal() +
-#   geom_hline(yintercept = c(0.5, 0.25))
-#
 # test |>
 #   group_by(term, method) |>
-#   summarise(avg = mean(estimate),
-#             emp_se = sd(estimate))
+#   summarise(
+#     avg = mean(estimate),
+#     emp_se = sd(estimate)
+#   )
 
-
-# Just use crprep for everything innit;
+saveRDS(test, "sims_cens.rds")
