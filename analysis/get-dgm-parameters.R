@@ -18,20 +18,20 @@ source("R/data-generation.R")
 params_direct <- list(
   "cause1" = list(
     "betas" = c(0.75, 0.5),
-    "p" = 0.4,
-    "base_rate" = 0.5,
+    "p" = 0.25,
+    "base_rate" = 1,
     "base_shape" = 1
   ),
   "cause2" = list(
     "betas" = c(0.75, 0.5),
-    "base_rate" = 0.5,
+    "base_rate" = 1,
     "base_shape" = 1
   )
 )
 
 
 large_dat <- generate_complete_dataset(
-  n = 5000,
+  n = 100000,
   params = params_direct,
   model_type = "direct",
   X_type = "binary",
@@ -39,13 +39,14 @@ large_dat <- generate_complete_dataset(
   control = list("admin_cens_time" = NULL, "cens_rate" = 1e-10) # 20% of obs are censored
 )
 
-table(large_dat$D)
+prop.table(table(large_dat$D))
 mod_fg1 <- FGR(Hist(time, D) ~ X + Z, data = large_dat, cause = 1)
 mod_fg1$crrFit$coef
 
 #mod_cox_cs1 <- coxph(Surv(time, D == 1) ~ X + Z, data = large_dat)
 #mod_cox_cs1$coefficients
 
+# Cause-specific 1 almost exactly exponential?
 mod_weib_cs1 <- survreg(Surv(time, D == 1) ~ X + Z, data = large_dat)
 shape_cs1 <- 1 / mod_weib_cs1$scale
 base_rate_cs1 <- exp(mod_weib_cs1$coefficients[[1]])^(-shape_cs1)
@@ -61,7 +62,7 @@ lfps_cs2 <- -mod_weib_cs2$coefficients[-1] * shape_cs2
 
 # Try simming new data ----------------------------------------------------
 
-n <- 10000
+n <- 100000
 Z <- rnorm(n)
 X <- rbinom(n, size = 1, prob = plogis(Z))
 times_cs1 <- rweibull_KM(
@@ -79,13 +80,36 @@ dat_test <- cbind.data.frame(
   D = as.numeric(times_cs2 < times_cs1) + 1L,
   factor(X), Z
 )
+
+# Event proportions almost identical?
 table(dat_test$D) |> prop.table()
 table(large_dat$D) |> prop.table()
 
-mod_lfp <- FGR(Hist(time, D) ~ X + Z, data = dat_test, cause = 1)
-mod_lfp$crrFit$coef
+# Takes 33 minutes on sample size of 2022.09
+system.time({
+  mod_lfp <- FGR(Hist(time, D) ~ X + Z, data = dat_test, cause = 1)
+  coefs_lfp <- mod_lfp$crrFit$coef
+})
 
 
+# beta_X ~ around 0.73, beta_Z = 0.37
+print(coefs_lfp)
+
+# No censoring!!
+dt_dat <- data.table(dat_test)
+dt_dat[, subdist_time := ifelse(D == 1, time, max(time) + 0.5)]
+coxph(Surv(subdist_time, D == 1) ~ X + Z, data = dt_dat)
+
+
+?kmi
+
+testos_kmi <- kmi(
+  Surv(time, D != 0) ~ 1,
+  data = dat_test,
+  etype = D,
+  failcode = 1,
+  nimp = m
+)
 
 
 
