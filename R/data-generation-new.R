@@ -2,16 +2,6 @@
 
 # Use brackets if passing names
 
-
-# Keep it minimal packages wise
-library(data.table)
-library(survival) # or riskRegression for vectorized predictions?
-library(broom)
-library(kmi)
-library(mice)
-library(smcfcs)
-library(rsimsum)
-
 # For Weibull simulation
 rweibull_KM <- function(n, shape, rate) {
   (-log(runif(n)) / rate)^(1 / shape)
@@ -20,10 +10,11 @@ rweibull_KM <- function(n, shape, rate) {
 # Generate covariates
 generate_covariates <- function(n) {
   dat <- data.table(id = seq_len(n), Z = rnorm(n = n, mean = 0, sd = 1))
-  dat[, X := factor(rbinom(n = n, size = 1L, prob = plogis(Z)))][]
+  dat[, X := factor(rbinom(n = n, size = 1L, prob = plogis(Z)))]
   return(dat)
 }
 
+#
 generate_direct_times <- function(U, x, params) {
   p <- params$p
   hr <- exp(x %*% params$betas)
@@ -122,27 +113,30 @@ add_event_times <- function(dat,
 add_missingness <- function(dat,
                             mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")) {
 
-  # Compute part of the linear predictor conditional on covariate
-  linpred_expr <- parse(text = mech_params$mechanism_expr)
-  linpred <- eval(linpred_expr, envir = dat)
+  if (mech_params$prob_missing > 0) {
 
-  # Shift intercept such that average prop missing = prob_missing
-  intercept_shift <- uniroot(
-    f = function(eta_0, linpred, prob) {
-      mean(plogis(eta_0 + linpred) - prob)
-    },
-    interval = c(-25, 25),
-    extendInt = "yes",
-    linpred = linpred,
-    p = mech_params$prob_missing
-  )$`root`
+    # Compute part of the linear predictor conditional on covariate
+    linpred_expr <- parse(text = mech_params$mechanism_expr)
+    linpred <- eval(linpred_expr, envir = dat)
 
-  # Generate missing indicator, and add NAs
-  dat[, ':=' (
-    X_missind = rbinom(n = nrow(dat), size = 1, prob = plogis(intercept_shift + linpred)),
-    X_obs = X
-  )]
-  dat[X_missind == 1, X := NA_character_] # to be edited if ever X continuous
+    # Shift intercept such that average prop missing = prob_missing
+    intercept_shift <- uniroot(
+      f = function(eta_0, linpred, prob) {
+        mean(plogis(eta_0 + linpred) - prob)
+      },
+      interval = c(-25, 25),
+      extendInt = "yes",
+      linpred = linpred,
+      p = mech_params$prob_missing
+    )$`root`
+
+    # Generate missing indicator, and add NAs
+    dat[, ':=' (
+      X_missind = rbinom(n = nrow(dat), size = 1, prob = plogis(intercept_shift + linpred)),
+      X_obs = X
+    )]
+    dat[X_missind == 1, X := NA_character_] # to be edited if ever X continuous
+  }
 
   return(dat)
 }
@@ -210,6 +204,64 @@ add_cumhaz_to_dat <- function(dat) {
   )]
 
   return(dat)
+}
+
+# args_event_times <- list(
+#   mechanism = "correct_FG",
+#   params = params,
+#   censoring_type = "exponential",
+#   censoring_params = list("exponential" = 0.1)
+# )
+#
+# args_missingness <- list(
+#   mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")
+# )
+
+generate_dataset <- function(n,
+                             args_event_times,
+                             args_missingness) {
+
+  dat <- generate_covariates(n = n)
+  do.call(add_event_times, args = c(list(dat = dat), args_event_times))
+  do.call(add_missingness, args = c(list(dat = dat), args_missingness))
+  return(dat[])
+}
+
+
+recover_weibull_lfps <- function(large_dat,
+                                 params_correct_FG) {
+
+  # Recover LFPs for cause 1
+  form_cs1 <- update(params_correct_FG$cause1$formula, Surv(time, D == 1) ~ .)
+  mod_weib_cs1 <- survreg(form_cs1, data = large_dat, dist = "weibull")
+  shape_cs1 <- 1 / mod_weib_cs1$scale
+  base_rate_cs1 <- exp(mod_weib_cs1$coefficients[[1]])^(-shape_cs1)
+  lfps_cs1 <- -mod_weib_cs1$coefficients[-1] * shape_cs1
+
+  # Recover LFPs for cause 1
+  form_cs2 <- update(params_correct_FG$cause2$formula, Surv(time, D == 2) ~ .)
+  mod_weib_cs2 <- survreg(form_cs2, data = large_dat, dist = "weibull")
+  shape_cs2 <- 1 / mod_weib_cs2$scale
+  base_rate_cs2 <- exp(mod_weib_cs2$coefficients[[1]])^(-shape_cs2)
+  lfps_cs2 <- -mod_weib_cs2$coefficients[-1] * shape_cs2
+
+  # Put them in the right format
+  params <- list(
+    "cause1" = list(
+      "formula" = ~ X + Z,
+      "betas" = lfps_cs1,
+      "base_rate" = base_rate_cs1,
+      "base_shape" = shape_cs1
+    ),
+    "cause2" = list(
+      "formula" = ~ X + Z,
+      "betas" = lfps_cs2,
+      "base_rate" = base_rate_cs1,
+      "base_shape" = shape_cs2
+    )
+  )
+
+  return(params)
 }
 
 
