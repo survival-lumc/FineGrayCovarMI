@@ -1,75 +1,97 @@
-source(here("packages.R"))
-source(here("R/data-generation.R"))
-
-df <- generate_dataset(
-  n = 1000,
-  args_event_times = list(
-    mechanism = "correct_FG",
-    params = tar_read(true_params_correct_FG),
-    censoring_type = "exponential",
-    censoring_params = list("exponential" = 0.46)
-  ),
-  args_missingness = list(mech_params = list("prob_missing" = 0.1, "mechanism_expr" = "Z"))
-)
-
-
-# Prep args
-originaldata <- data.frame(df)
-smtype <- "coxph"
-smformula <- "Surv(time, D) ~ X + Z"
-method <- make.method(originaldata, defaultMethod = c("norm", "logreg", "mlogit", "podds"))
-m <- 3
-numit <- 2
-cause <- 1
-kmi_args <- list(
-  formula = Surv(time, D != 0) ~ 1,
-  data = originaldata,
-  etype = "D",
-  failcode = cause,
-  nimp = m
-)
-
 # Add parameters for MI imps per kmi imp??
 smcfcs.finegray <- function(originaldata,
-                            smtype = "coxph",
                             smformula,
                             method,
+                            cause = 1,
                             m = 5,
                             numit = 10,
                             rjlimit = 5000,
                             #kmi_args = NULL,
                             ...) {
 
-  # Or maybe avoid this and force D to be numeric..
-  # CHeck also how kmi does this part
+  # Locate/sort out outcome variables
   outcome_vars <- all.vars(update(as.formula(smformula), . ~ 1))
-  status_var_name <- outcome_vars[length(outcome_vars)]
-  status_var <- originaldata[, status_var_name]
-  cens_code <- ifelse(is.factor(status_var), levels(status_var)[1], 0L)
+  time_var_name <- head(outcome_vars, n = 1L) # will need to add warning/error if tstart tstop
+  status_var_name <- tail(outcome_vars, n = 1L)
 
-  form_split <- unlist(strsplit(x = smformula, split = "~"))
-  surv_obj <- eval(parse(text = form_split[1]), envir = originaldata |>
-                     mutate(D = as.numeric(D)))
-  attr()
+  time_var <- originaldata[[time_var_name]]
+  status_var <- originaldata[[status_var_name]]
+  if (!is.numeric(status_var))
+    stop("Status variable should be numeric, with 0 indicating a censored observation.")
 
-  form <- as.formula(smformula)
-  # use crossprod in data generation?
-  x <- eval(
-    update(as.formula(smformula), . ~ 0),
-    envir = originaldata
-  )
+  # Get function form RHS of formula
+  smformula_rhs <- unlist(strsplit(smformula, split = "~"))[2]
 
-  #debugonce(kmi)
-  kmi_imps <- kmi::kmi(
-    Surv(time, D != 0) ~ 1, # or > 0, add cens code
-    data = data.frame(originaldata),
-    etype = substitute(D),
-    failcode = 1,
-    nimp = m
-  )
+  # Check number censored
+  num_censored <- sum(status_var == 0)
+  smformula_processed <- paste0("Surv(newtimes, newevent) ~", smformula_rhs)
+  meths_smcfcs <- c(method, "newtimes" = "", newevent = "")
 
-  kmi_imps
+  # If no censoring: just pre-process data
+  if (num_censored == 0) {
 
-  # Do invisible and capture output bits here..
+    # Naming here consistent with what kmi outputs
+    eps <- 0.1
+    max_ev1_time <- max(time_var[status_var == cause])
+    newtimes <- time_var
+    newtimes[status_var != cause] <- max_ev1_time + eps
+    newevent <- as.numeric(status_var == cause)
 
+    # Bind to original data
+    originaldata_processed <- cbind.data.frame(originaldata, newtimes, newevent)
+
+    # Run imputations
+    smcfcs_obj <- smcfcs(
+      originaldata = originaldata_processed,
+      smtype = "coxph",
+      smformula = smformula_processed,
+      method = meths_smcfcs,
+      rjlimit = rjlimit,
+      numit = numit,
+      m = m
+    )
+
+  } else {
+
+    # Prepare kmi() formula (for now default kaplan-meier imp)
+    lhs_kmi <- paste0("Surv(", paste(outcome_vars, collapse = ", "), " != 0)")
+    form_kmi <- reformulate(termlabels = c("1"), response = lhs_kmi)
+
+    # Impute missing censoring times in first loop
+    kmi_imps <- do.call(
+      kmi::kmi,
+      args = list(
+        "formula" = form_kmi,
+        "data" = originaldata, # watch out here later
+        "etype" = as.symbol(status_var_name),
+        "failcode" = cause,
+        "nimp" = m
+      )
+    )
+
+    # Loop
+    imps_loop <- lapply(kmi_imps$imputed.data, function(new_outcomes) {
+
+      df_imp <- cbind(kmi_imps$original.data, new_outcomes)
+      df_imp$newevent <- as.numeric(df_imp$newevent) - 1L # Just for smcfcs
+
+      # Use switch for imp methods
+      smcfcs_modif <- smcfcs(
+        originaldata = df_imp,
+        smtype = "coxph",
+        smformula = smformula_processed,
+        method = meths_smcfcs,
+        rjlimit = rjlimit,
+        numit = numit,
+        m = 1L
+      )
+
+      return(smcfcs_modif)
+    })
+
+    smcfcs_obj <- smcfcs:::combine_smcfcs_objects(imps_loop)
+  }
+
+  # Do invisible and capture output bits here?
+  return(smcfcs_obj)
 }

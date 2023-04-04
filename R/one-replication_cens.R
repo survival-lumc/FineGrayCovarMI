@@ -120,7 +120,7 @@ one_replication <- function() {
       m = 1L
     )
 
-    return(smcfcs_modif$impDatasets[[1]])
+    return(smcfcs_modif)
   })
 
   # Pool already here

@@ -6,6 +6,7 @@ library("future.callr")
 library("data.table")
 library("survival") # or riskRegression for vectorized predictions?
 library("broom")
+library("ggplot2")
 library("kmi")
 library("mice")
 library("smcfcs")
