@@ -7,7 +7,7 @@ library("here")
 
 # Source the rest
 source(here("packages.R"))
-source(here("R/data-generation-new.R")) # or
+source(here("R/data-generation.R")) # or
 #functions <- list.files(here("R"), full.names = TRUE)
 #invisible(lapply(functions, source))
 
@@ -20,7 +20,42 @@ plan(callr)
 
 # use variance = FALSE in FGR to make it faster?
 
-# Start of pipeline
+
+# Or maybe only part for the LFPs (without censoring bit)
+scenarios <- expand.grid(
+  "failure_time_model" = c("correct_FG", "misspec_FG"),
+  "prob_space_domin" = c("low_p" = 0.25, "high_p" = 0.75),
+  "censoring_type" = c("none", "exponential", "uniform")
+)
+
+
+
+# Start of pipeline, iterate over scenarios df
+# list(
+#   tar_map(
+#     value = list("prob_space_domin" = c("low_p" = 0.25, "high_p" =0.75)),
+#     tar_target(
+#       true_params_correct_FG,
+#       list(
+#         "cause1" = list(
+#           "formula" = ~ X + Z,
+#           "betas" = c(0.75, 0.5),
+#           "p" = prob_space_domin,
+#           "base_rate" = 1,
+#           "base_shape" = 0.75
+#         ),
+#         "cause2" = list(
+#           "formula" = ~ X + Z,
+#           "betas" = c(0.75, 0.5),
+#           "base_rate" = 1,
+#           "base_shape" = 0.75
+#         )
+#       )
+#     )
+#   )
+# )
+
+# First get it working for one p
 list(
   tar_target(
     true_params_correct_FG,
@@ -72,10 +107,12 @@ list(
       ),
       args_missingness = list(mech_params = list("prob_missing" = 0))
     )
-  )#,
+  ),
+  tar_target(
+    largedat_weibull_FG_lfps,
+    recover_fg_lps(largedat_weibull_cause_spec)
+  )
   # 'True' least false in cause-spec.. should depend on censoring?
+  # Also make scenarios table..
 )
-# list(
-#   tar_target(data, data.frame(x = sample.int(100), y = sample.int(100))),
-#   tar_target(summary, summ(data)) # Call your custom functions as needed.
-# )
+

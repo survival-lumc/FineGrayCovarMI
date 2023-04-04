@@ -115,6 +115,8 @@ add_missingness <- function(dat,
 
   if (mech_params$prob_missing > 0) {
 
+    #browser()
+
     # Compute part of the linear predictor conditional on covariate
     linpred_expr <- parse(text = mech_params$mechanism_expr)
     linpred <- eval(linpred_expr, envir = dat)
@@ -122,13 +124,14 @@ add_missingness <- function(dat,
     # Shift intercept such that average prop missing = prob_missing
     intercept_shift <- uniroot(
       f = function(eta_0, linpred, prob) {
-        mean(plogis(eta_0 + linpred) - prob)
+        mean(plogis(eta_0 + linpred)) - prob
       },
       interval = c(-25, 25),
       extendInt = "yes",
       linpred = linpred,
       p = mech_params$prob_missing
     )$`root`
+
 
     # Generate missing indicator, and add NAs
     dat[, ':=' (
@@ -183,39 +186,29 @@ compute_marginal_cumhaz <- function(timevar,
 add_cumhaz_to_dat <- function(dat) {
 
   dat[, ':=' (
-    H_cause1 = add_cumhaz_to_dat(
+    H_cause1 = compute_marginal_cumhaz(
       timevar = time,
       statusvar = D,
       cause = 1,
       type = "cause_spec"
     ),
-    H_cause2 = add_cumhaz_to_dat(
+    H_cause2 = compute_marginal_cumhaz(
       timevar = time,
       statusvar = D,
       cause = 2,
       type = "cause_spec"
     ),
-    H_subdist_cause1 = add_cumhaz_to_dat(
+    H_subdist_cause1 = compute_marginal_cumhaz(
       timevar = time,
       statusvar = D,
       cause = 1,
       type = "subdist"
-    )
+    ), # Add also cause 1 indicator
+    D_star = as.numeric(D == 1)
   )]
 
   return(dat)
 }
-
-# args_event_times <- list(
-#   mechanism = "correct_FG",
-#   params = params,
-#   censoring_type = "exponential",
-#   censoring_params = list("exponential" = 0.1)
-# )
-#
-# args_missingness <- list(
-#   mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")
-# )
 
 generate_dataset <- function(n,
                              args_event_times,
@@ -230,6 +223,8 @@ generate_dataset <- function(n,
 
 recover_weibull_lfps <- function(large_dat,
                                  params_correct_FG) {
+
+  # Note that survreg not affected by timefix issues, see vignette
 
   # Recover LFPs for cause 1
   form_cs1 <- update(params_correct_FG$cause1$formula, Surv(time, D == 1) ~ .)
@@ -264,7 +259,26 @@ recover_weibull_lfps <- function(large_dat,
   return(params)
 }
 
+# Because of long computation time of FGR, and memory issues with crprep,
+# we recover the misspecified FG coefficients by simpler way
+# (this is quicker than variance = FALSE)
+recover_fg_lps <- function(large_dat) {
+
+  # We have to set all event 2 times to large number, larger then max event 1 time
+  max_ev1_time <- large_dat[D == 1, .(time = max(time))][["time"]]
+  eps <- 0.1
+  large_dat[D == 2, time := max_ev1_time + eps]
+  mod <- coxph(
+    Surv(time, D == 1) ~ X + Z, # make this an argument like the other LFP fun
+    data = large_dat,
+    control = coxph.control(timefix = FALSE)
+  )
+  coef(mod)
+}
+
 
 # Later functions for getting true cumulative incidences (vectorised?)
 
 # Will need morisot function to pool pred probs
+
+# Nested data.tables??
