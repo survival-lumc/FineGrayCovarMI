@@ -113,6 +113,21 @@ one_replication <- function(args_event_times,
     )
   )
 
+  object.size(nested_imps)
+
+  # List is not anymore efficient
+  object.size(
+    list(
+      complete(mice_comp, action = "all"),
+      complete(mice_subdist, action = "all"),
+      smcfcs_finegray$impDatasets,
+      smcfcs_comp$impDatasets
+    )
+  )
+
+  # Remove imps objects to clear memory..
+  rm(mice_comp, mice_subdist, smcfcs_finegray, smcfcs_comp)
+
   # Or
 
   # Fit substantive model in all datasets - write wrappers for the lapplys?
@@ -130,40 +145,36 @@ one_replication <- function(args_event_times,
     )
   ), by = method]
 
-  rbindlist(mi_summaries$coefs_summ)
-
-
-  # Test if this is quicker?
-  imp_dats <- list(
-    "mice_comp" = complete(mice_comp, action = "all"),
-    "mice_subdist" = complete(mice_subdist, action = "all"),
-    "smcfcs_finegray" = smcfcs_finegray$impDatasets,
-    "smcfcs_comp" = smcfcs_comp$impDatasets
+  # Or should we generate all sim dats first (for one scenario), then nest? See mcdermott blog post..
+  summs <- rbindlist(
+    list(
+      mi_summaries,
+      data.table(
+        method = "CCA",
+        mods = list(mod_CCA),
+        coefs_summ = list(tidy(mod_CCA$crrFit, conf.int = TRUE))
+      ),
+      data.table(
+        method = "full",
+        mods = list(mod_full),
+        coefs_summ = list(tidy(mod_full$crrFit, conf.int = TRUE))
+      )
+    ),
+    fill = TRUE
   )
 
-  rbindlist(imp_dats)
+  # Use .SD above??
 
-  # Do the same for CCA methods
- test <-  nested_imps[, .(imp_dats = imps[[1]]), by = method]
- test[, imp_ind := seq_len(.N), by = method]
- test[, .(
-   list(FGR(Hist(time, D) ~ X + Z, data = imp_dats, cause = 1))
- ), by = c("method", "imp_ind")]
+  summs
+  summs2 <- copy(summs)
+  summs2[, mods := NULL] #FGR is what takes up memory!!
+  #https://cran.r-project.org/web/packages/tidyr/vignettes/nest.html
+  # object size
+  #https://stackoverflow.com/questions/70878796/how-to-store-nested-data-efficiently-in-r
+  # https://osf.io/f6pxw/download
 
- microbenchmark::microbenchmark(
-   "lapply" = {
-     purrr::modify_depth(imp_dats, .depth = 1L, .f = ~ {
-       lapply(.x, function(imp) FGR(model_formula, data = imp, cause = 1))
-     })
-   },
-   "nested" = {
-     nested_imps_mods <- nested_imps[, .(
-       mods = list(
-         lapply(imps[[1]], function(imp_dat) FGR(model_formula, data = imp_dat, cause = 1))
-       )
-     ), by = method]
-   }, times = 3
- )
+  # Note predicted cuminc only at event 1!! Possible efficient alternative:
+  # store baseline hazard at given timepoints?? but then have to do in each imp dataset..
 
   # Bind the true ones..too
   # intersect() colnames for binding

@@ -251,7 +251,7 @@ recover_weibull_lfps <- function(large_dat,
     "cause2" = list(
       "formula" = ~ X + Z,
       "betas" = lfps_cs2,
-      "base_rate" = base_rate_cs1,
+      "base_rate" = base_rate_cs2,
       "base_shape" = shape_cs2
     )
   )
