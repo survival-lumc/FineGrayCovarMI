@@ -9,6 +9,7 @@ library("here")
 source(here("packages.R"))
 source(here("R/data-generation.R"))
 source(here("R/smcfcs.finegray.R"))
+source(here("R/crprep-timefixed.R"))
 # or
 #functions <- list.files(here("R"), full.names = TRUE)
 #invisible(lapply(functions, source))

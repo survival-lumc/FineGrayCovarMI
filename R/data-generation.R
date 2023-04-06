@@ -162,7 +162,7 @@ compute_marginal_cumhaz <- function(timevar,
       data = cbind.data.frame("time" = timevar, "status" = as.numeric(statusvar == cause))
     )
   } else if (type == "subdist") {
-    long_dat <- mstate::crprep(
+    long_dat <- crprep.timefixed(
       Tstop = "time",
       status = "status",
       data = cbind.data.frame("time" = timevar, "status" = statusvar),

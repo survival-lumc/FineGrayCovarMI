@@ -1,5 +1,6 @@
 source(here("R/data-generation.R"))
 source(here("R/smcfcs.finegray.R"))
+source(here("R/crprep-timefixed.R"))
 
 args_event_times <- list(
   mechanism = "correct_FG",
@@ -7,7 +8,7 @@ args_event_times <- list(
   censoring_type = "none"
 )
 args_missingness <- list(mech_params = list("prob_missing" = 0.1, "mechanism_expr" = "Z"))
-args_imputations <- list(m = 5, iters = 1, rjlimit = 1000) #note rjlimit does not matter for binary X
+args_imputations <- list(m = 4, iters = 1, rjlimit = 1000) #note rjlimit does not matter for binary X
 
 
 # Add helper functions here --
@@ -166,79 +167,36 @@ one_replication <- function(args_event_times,
     list(lapply(imp_dats[[1]], function(imp_dat) FGR(model_formula, data = imp_dat, cause = 1)))
   ), by = method]
 
-  # Get essentials
-  nested_impdats[, .(
-    list(
-      lapply(mods[[1]], extract_FGR_essentials, timepoints = pred_times),
-      tidy(pool(lapply(mods[[1]], "[[", "crrFit")), conf.int = TRUE)
+  # Pool coefficients, and keep necessary information in each imputed dataset to predict
+  summaries_impdats <- nested_impdats[, .(
+    summary = list(
+      lapply(mods[[1]], extract_FGR_essentials, timepoints = pred_times), # Imputation-specific coefs + base cuminc
+      tidy(pool(lapply(mods[[1]], "[[", "crrFit")), conf.int = TRUE) # Pooled information
     )
-  ), by = method][, .(list(V1)), by = method]
+  ), by = method]
 
-
-
-  #extract_FGR_essentials(mod_CCA, timepoints = pred_times)
-
-
-
-  nested_impdats
-
-  # Summaries for CCA and full
-  dt_CCA <- data.table(
-    "method" = "CCA",
-    "mods" = list(mod_CCA),
-    "summaries" = list(
-      list(
-        pred_components = ,
-        pooled_summary = tidy(mod_CCA$crrFit, conf.int = TRUE)
-      )
-    )
-  )
-
-  # Or should we generate all sim dats first (for one scenario), then nest? See mcdermott blog post..
-  summs <- rbindlist(
-    list(
-      mi_summaries,
-      data.table(
-        method = "CCA",
-        mods = list(mod_CCA),
-        coefs_summ = list(tidy(mod_CCA$crrFit, conf.int = TRUE))
-      ),
-      data.table(
-        method = "full",
-        mods = list(mod_full),
-        coefs_summ = list(tidy(mod_full$crrFit, conf.int = TRUE))
-      )
+  # Add summaries of other methods (CCA, and full dataset)
+  method_summaries <- rbind(
+    data.table(
+      method = "full",
+      summary = list(extract_FGR_essentials(mod_full, pred_times), tidy(mod_full$crrFit, conf.int = TRUE))
     ),
-    fill = TRUE
+    data.table(
+      method = "CCA",
+      summary = list(extract_FGR_essentials(mod_CCA, pred_times), tidy(mod_CCA$crrFit, conf.int = TRUE))
+    ),
+    summaries_impdats
   )
 
-
-    # Use .SD above??
-
-    # morisot pooling
-    # https://github.com/survival-lumc/CauseSpecCovarMI/blob/master/R/illustrative-analysis-helpers.R
-
-    summs
-    summs2 <- copy(summs)
-    summs2[, mods := NULL] #FGR is what takes up memory!!
-    #https://cran.r-project.org/web/packages/tidyr/vignettes/nest.html
-    # object size
-    #https://stackoverflow.com/questions/70878796/how-to-store-nested-data-efficiently-in-r
-    # https://osf.io/f6pxw/download
-
-    # Note predicted cuminc only at event 1!! Possible efficient alternative:
-    # store baseline hazard at given timepoints?? but then have to do in each imp dataset..
-
-    # Bind the true ones..too
-    # intersect() colnames for binding
-
-
-  return(nested_imps)
+  return(method_summaries[, .(summary = list(summary)), by = method])
 }
 
 
+# morisot pooling
+# https://github.com/survival-lumc/CauseSpecCovarMI/blob/master/R/illustrative-analysis-helpers.R
+
 test_imps <- replicate(
-  n = 10,
+  n = 5,
   expr = {
     one_replication(
       args_event_times,
@@ -249,7 +207,32 @@ test_imps <- replicate(
   simplify = FALSE
 )
 
-df <- rbindlist(test_imps)
+test_imps
+df <- rbindlist(test_imps, idcol = "sim_rep")
+#df[, unlist(summary), by = c("method", "sim_rep")]
+
+# file:///C:/Users/efbonneville/Downloads/Manuscript%20(1).pdf
+df_coefs <- df[, .(summary_coefs = list(summary[[1]][[2]])), by = c("method", "sim_rep")]
+df_preds <- df[, .(summary_preds = list(summary[[1]][[1]])), by = c("method", "sim_rep")]
+
+tidyr::unnest(df_coefs, summary_coefs)
+tidyr::unnest(df_preds, summary_preds)
+
+unnest_dt <- function(dt, col, id){
+  stopifnot(is.data.table(dt))
+  by <- substitute(id)
+  col <- substitute(unlist(col, recursive = FALSE))
+  dt[, eval(col), by = eval(by)]
+}
+
+unnest_dt(df_coefs, summary_coefs, list(method, sim_rep))
+
+df_coefs[, unlist(summary_coefs, recursive = FALSE), c("method", "sim_rep")]
+
+
+df[, .(dasummary[[1]][[2]]), by = c("method", "sim_rep")]
+rbindlist()
+df[, .(pooled_info = summary[[1]][[2]]), by = c("method", "sim_rep")]
 pryr::object_size(df)
 pryr::mem_used()
 # https://win-vector.com/2014/05/30/trimming-the-fat-from-glm-models-in-r/
