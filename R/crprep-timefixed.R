@@ -316,10 +316,10 @@ crprep.default <-
     prec <- .Machine$double.eps*prec.factor
 
     ## Calculate product-limit time-to-censoring distribution, "event" not included in case of ties
-    surv.cens <- survival::survfit(Surv(Tstart,Tstop+ifelse(status==cens,prec,0),status==cens)~strata.num)
+    surv.cens <- survival::survfit(Surv(Tstart,Tstop+ifelse(status==cens,prec,0),status==cens)~strata.num, timefix = FALSE)
 
     ## Calculate time to entry (left truncation) distribution at t-, use 2*prec in order to exclude censorings at same time
-    if(calc.trunc) surv.trunc <- survival::survfit(Surv(-Tstop,-(Tstart+2*prec),rep(1,n))~strata.num)
+    if(calc.trunc) surv.trunc <- survival::survfit(Surv(-Tstop,-(Tstart+2*prec),rep(1,n))~strata.num, timefix = FALSE)
     ## trunc.dist <- summary(surv.trunc)
     ## trunc.dist$time <- rev(-trunc.dist$time)-prec
     ## trunc.dist$surv <- c(rev(trunc.dist$surv)[-1],1)

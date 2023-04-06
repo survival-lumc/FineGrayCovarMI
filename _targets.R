@@ -71,8 +71,8 @@ list(
       ),
       "cause2" = list(
         "formula" = ~ X + Z,
-        "betas" = c(0.75, 0.5),
-        "base_rate" = 1,
+        "betas" = c(0.75, 0.5), # pick some that result in non-zero cause-spec coefs!!
+        "base_rate" = 1, # might need to increase this? nah probs wont matter
         "base_shape" = 0.75
       )
     )
