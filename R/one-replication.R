@@ -13,48 +13,35 @@ args_imputations <- list(m = 4, iters = 1, rjlimit = 1000) #note rjlimit does no
 
 # Add helper functions here --
 
+# NOTE: we need different fun for admin censoring, which is assumed to be known!!!
+
 # Extract coefficients + baseline cumulative incidence at desired timepoints
 extract_FGR_essentials <- function(FGR_fit,
                                    timepoints) {
-  predictors <- all.vars(delete.response(FGR_fit$terms))
-  coefs <- FGR_fit$crrFit$coef
 
   # This still works even if there are factors, and you do not know their baseline level
+  predictors <- all.vars(delete.response(FGR_fit$terms))
   newdat_baseline <- data.frame(matrix(data = 0L, ncol = length(predictors)))
   colnames(newdat_baseline) <- predictors
-  base_cuminc <- setNames(
-    drop(predict(FGR_fit, newdata = newdat_baseline, times = timepoints)),
-    nm = as.character(timepoints)
-  )
+  base_cuminc <- drop(predict(FGR_fit, newdata = newdat_baseline, times = timepoints))
 
   # Note could ask for crr object? Not very heavy, only 10% of total FGR size
-  essentials <- list(
-    "coef" = coefs,
-    "base_cuminc" = base_cuminc
+  # Make this into a dataframe!!
+  essentials <- data.table(
+    "time" = timepoints,
+    "base_cuminc" = base_cuminc,
+    "coefs" = list(FGR_fit$crrFit$coef)
   )
+
+  #lapply(list(c(1, 1), c(1, 2), c(0.5, 1)), function(x) {
+  #  essentials[, .(drop(unlist(coefs) %*% x)), by = c("time", "base_cuminc")]
+  #})
+
   return(essentials)
 }
 
-# Input is a nested data.table with imputed datasets
-summarise_imputations <- function(nested_dat,
-                                  timepoints) {
-
-  # Fit models in each imputed dataset
-  nested_dat[, mods := .(
-    list(lapply(imp_dats[[1]], function(imp_dat) FGR(model_formula, data = imp_dat, cause = 1)))
-  ), by = method]
-
-  # Get essentials
-  nested_dat[, .(
-    list(
-      lapply(mods[[1]], extract_FGR_essentials, timepoints = pred_times),
-      tidy(pool(lapply(mods[[1]], "[[", "crrFit")), conf.int = TRUE)
-    )
-  ), by = method][, .(list(V1)), by = method]
-
-}
-
 # Start here
+# Argument scenario ids?
 one_replication <- function(args_event_times,
                             args_missingness,
                             args_imputations) {
@@ -156,39 +143,52 @@ one_replication <- function(args_event_times,
     )
   )
 
-  # Remove imps objects to clear memory
-  rm(mice_comp, mice_subdist, smcfcs_finegray, smcfcs_comp)
-
   # Grid of months for predictions
-  pred_times <- round(seq(0, 10, by = 1 / 12), digits = 3)
+  #pred_times <- round(seq(0, 10, by = 1 / 12), digits = 3)
+  pred_times <- 1:10 # or every 6 months??
+
+  timepoints <- pred_times
+  FGR_fit <- mod_CCA
 
   # Fit models in each imputed dataset
   nested_impdats[, mods := .(
     list(lapply(imp_dats[[1]], function(imp_dat) FGR(model_formula, data = imp_dat, cause = 1)))
   ), by = method]
 
-  # Pool coefficients, and keep necessary information in each imputed dataset to predict
+  # Summaries
   summaries_impdats <- nested_impdats[, .(
-    summary = list(
-      lapply(mods[[1]], extract_FGR_essentials, timepoints = pred_times), # Imputation-specific coefs + base cuminc
-      tidy(pool(lapply(mods[[1]], "[[", "crrFit")), conf.int = TRUE) # Pooled information
-    )
+    coefs_summary = list(tidy(pool(lapply(mods[[1]], "[[", "crrFit")), conf.int = TRUE)),
+    preds_summary = list(
+      rbindlist(
+        lapply(mods[[1]], extract_FGR_essentials, timepoints = pred_times),
+        idcol = "imp"
+      )
+    ) # Imputation-specific coefs + base cuminc
   ), by = method]
+
+  # Remove imps objects to clear memory
+  rm(mice_comp, mice_subdist, smcfcs_finegray, smcfcs_comp, nested_impdats)
 
   # Add summaries of other methods (CCA, and full dataset)
   method_summaries <- rbind(
     data.table(
       method = "full",
-      summary = list(extract_FGR_essentials(mod_full, pred_times), tidy(mod_full$crrFit, conf.int = TRUE))
+      coefs_summary = list(tidy(mod_full$crrFit, conf.int = TRUE)),
+      preds_summary = list(extract_FGR_essentials(mod_full, pred_times))
     ),
     data.table(
       method = "CCA",
-      summary = list(extract_FGR_essentials(mod_CCA, pred_times), tidy(mod_CCA$crrFit, conf.int = TRUE))
+      coefs_summary = list(tidy(mod_CCA$crrFit, conf.int = TRUE)),
+      preds_summary = list(extract_FGR_essentials(mod_CCA, pred_times))
     ),
     summaries_impdats
   )
 
-  return(method_summaries[, .(summary = list(summary)), by = method])
+  # Add some scenario identifiers?
+
+  # Eventually check if too heavy..
+  return(method_summaries)
+  #return(method_summaries[, .(summary = list(summary)), by = method])
 }
 
 
@@ -196,7 +196,7 @@ one_replication <- function(args_event_times,
 # https://github.com/survival-lumc/CauseSpecCovarMI/blob/master/R/illustrative-analysis-helpers.R
 
 test_imps <- replicate(
-  n = 5,
+  n = 4,
   expr = {
     one_replication(
       args_event_times,
@@ -209,11 +209,96 @@ test_imps <- replicate(
 
 test_imps
 df <- rbindlist(test_imps, idcol = "sim_rep")
+
+# Bind coefs togeths
+df_coefs <- rbindlist(
+  with(df, Map(cbind, method = method, sim_rep = sim_rep, coefs_summary)),
+  fill = TRUE
+)
+
+# Bind predictions
+df_preds <- rbindlist(
+  with(df, Map(cbind, method = method, sim_rep = sim_rep, preds_summary)),
+  fill = TRUE
+)
+df_preds[is.na(imp), imp := 0]
+df_preds
+
+# Try test pooling
+new_pat <- c("X" = 0.5, "Z" = 1)
+new_pats <- list(
+  "A" = c("X" = 0.5, "Z" = 1),
+  "B" = c("X" = 0.5, "Z" = 0.5)
+)
+testo <- df_preds[, .(
+  pred = 1 - (1 - base_cuminc)^exp(drop(unlist(coefs) %*% new_pat))
+), by = c("method", "sim_rep", "time", "imp")]
+
+df_preds[, .(
+  lapply(new_pats, function(x) {
+    1 - (1 - base_cuminc)^exp(drop(unlist(coefs) %*% x))
+  })
+), by = c("method", "sim_rep", "time", "imp")]
+
+#for (j in cols) set(dt, j = j, value = -dt[[j]])
+# for predictions?
+
+# See also https://stackoverflow.com/questions/16846380/apply-a-function-to-every-specified-column-in-a-data-table-and-update-by-referen
+# or just rbindlist the very big ones..
+testo
+
+inv_cloglog <- function(x) 1 - exp(-exp(x))
+cloglog <- function(x) log(-log(1 - x))
+
+testo[, .(
+  pooled_pred = inv_cloglog(mean(cloglog(pred)))
+), by = c("method", "sim_rep", "time")] |>
+  ggplot(aes(time, pooled_pred)) +
+  geom_line(aes(col = method, linetype = method), size = 1) +
+  facet_wrap(~ sim_rep) +
+  theme_bw()
+
+essentials[, .(drop(unlist(coefs) %*% x)), by = c("time", "base_cuminc")]
+
 #df[, unlist(summary), by = c("method", "sim_rep")]
 
 # file:///C:/Users/efbonneville/Downloads/Manuscript%20(1).pdf
 df_coefs <- df[, .(summary_coefs = list(summary[[1]][[2]])), by = c("method", "sim_rep")]
 df_preds <- df[, .(summary_preds = list(summary[[1]][[1]])), by = c("method", "sim_rep")]
+
+# Save the preds as a df!
+
+
+df_coefs[, cbind(method, rbindlist(summary_coefs, fill = TRUE)), by = method]
+rbindlist(df_coefs[, cbind(method, sim_rep, summary_coefs)])
+df_coefs[, .(list(cbind(method, sim_rep, summary_coefs))), by = c("method", "sim_rep")]
+
+test <- df_coefs[1, ]
+test[, .(list(cbind(method, sim_rep, summary_coefs[[1]])))]
+
+rbindlist(Map(cbind, timestamp = df_coefs$method, df_coefs$summary_coefs), fill = TRUE)
+
+# Thank the lawddddddd https://stackoverflow.com/questions/58563899/dataframe-with-nested-dataframes-how-to-set-id-column-with-data-tablerbindli
+rbindlist(df_coefs[, .(Map(cbind, method, sim_rep, summary_coefs))], fill = TRUE)
+
+df_coefs[, .(
+  list(cbind(method, sim_rep, summary_coefs[[1]]))
+), by = c("method", "sim_rep")]
+
+unnest_fill <- function(dt, col, id) {
+  stopifnot(is.data.table(dt))
+  by <- substitute(id)
+  col <- substitute(col[[1]])
+}
+
+unnest_dt <- function(dt, col, id){
+  stopifnot(is.data.table(dt))
+  by <- substitute(id)
+  #col <- substitute(unlist(col, recursive = FALSE))
+  dt[, eval(col), by = eval(by)]
+}
+
+
 
 tidyr::unnest(df_coefs, summary_coefs)
 tidyr::unnest(df_preds, summary_preds)
@@ -225,7 +310,21 @@ unnest_dt <- function(dt, col, id){
   dt[, eval(col), by = eval(by)]
 }
 
-unnest_dt(df_coefs, summary_coefs, list(method, sim_rep))
+
+unnest_dt <- function(tbl, col) {
+  tbl <- as.data.table(tbl)
+  col <- ensyms(col)
+  clnms <- syms(setdiff(colnames(tbl), as.character(col)))
+  tbl <- as.data.table(tbl)
+  tbl <- eval(
+    expr(tbl[, as.character(unlist(!!!col, recursive = T)), by = list(!!!clnms)])
+  )
+  colnames(tbl) <- c(as.character(clnms), as.character(col))
+  tbl
+}
+
+
+unnest_dt(df_coefs, summary_coefs)
 
 df_coefs[, unlist(summary_coefs, recursive = FALSE), c("method", "sim_rep")]
 
