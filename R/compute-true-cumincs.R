@@ -1,5 +1,4 @@
-
-
+# TO BE EDITED!!
 compute_true_cuminc <- function(t,
                                 newdat,
                                 params,

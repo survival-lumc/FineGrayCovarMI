@@ -42,6 +42,10 @@ one_replication <- function(args_event_times,
     args_missingness = args_missingness
   )
 
+  # If admin cens (check 5.3.3 beyersmann)
+  # - change time for D = 2 to: cens_time
+  # - change D to: 1 + as.numeric(D != 1)
+
   # Add predictors needed for imputation
   add_cumhaz_to_dat(dat)
   # Convert here once for all as df?
@@ -105,9 +109,11 @@ one_replication <- function(args_event_times,
 
   # Method 5: SMC-FCS Fine-Gray
   df_smcfcs_finegray <- data.frame(dat)
-  df_smcfcs_finegray$D <-  as.numeric(
-    factor(df_smcfcs_finegray$D, levels = c(0, levels(df_smcfcs_finegray$D)))
-  ) - 1L
+  D_levels <- levels(df_smcfcs_finegray$D)
+  if (!(0 %in% D_levels)) {
+    levels(df_smcfcs_finegray$D) <- c(0, D_levels)
+  }
+  df_smcfcs_finegray$D <-  as.numeric(df_smcfcs_finegray$D) - 1L
 
   #df_smcfcs_finegray <- as.
   smcfcs_finegray <- smcfcs.finegray(

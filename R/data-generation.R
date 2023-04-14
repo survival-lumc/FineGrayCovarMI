@@ -26,7 +26,7 @@ generate_direct_times <- function(U, x, params) {
 add_event_times <- function(dat,
                             mechanism = c("correct_FG", "misspec_FG"),
                             params,
-                            censoring_params = list("exponential" = 0.001, "uniform" = c(2, 4)), # these are fixed hereeee
+                            censoring_params = list("exponential" = 0.45, "uniform" = c(2, 4)), # these are fixed hereeee
                             censoring_type = c("none", "exponential", "uniform")) {
 
   # Match arguments
