@@ -20,17 +20,18 @@ plan(callr)
 # Data-generating parameters depend on p-space domination, so we need to iterate
 # over that parameter separately
 prob_space_domin <- c("low_p" = 0.25, "high_p" = 0.75)
-
-# Rest of scenario parameters are stored in standard data.frame
-scenarios <- expand.grid(
-  "failure_time_model" = c("correct_FG", "misspec_FG"),
-  "censoring_type" = c("none", "exponential"),#, "uniform"),
-  stringsAsFactors = FALSE
-)
+failure_time_model <- c("correct_FG", "misspec_FG")
+censoring_type <- c("none", "exponential")#, "uniform"),
 
 # Prediction settings
-prediction_settings <- list(tar_target(pred_timepoints, seq(1, 10, by = 1)))
-reference_patients <- expand.grid(X = c(0, 1), Z = c(0, 1))
+pred_timepoints <- seq(1, 10, by = 1)
+prediction_settings <- list(
+  tar_target(
+    reference_patients,
+    expand.grid(X = c(0, 1), Z = c(0, 1))
+  )
+)
+
 
 # Here we start the pipeline
 simulation_pipeline <- tar_map(
@@ -50,6 +51,7 @@ simulation_pipeline <- tar_map(
       "cause2" = list(
         "formula" = ~ X + Z,
         "betas" = c(0.75, 0.5), # pick some that result in non-zero cause-spec coefs!
+        # .. or doesnt matter since in big p scenario, it works out?
         "base_rate" = 1, # might need to increase this to avoid the above?
         "base_shape" = 0.75
       )
@@ -59,7 +61,7 @@ simulation_pipeline <- tar_map(
   tar_target(
     largedat_correct_FG,
     generate_dataset(
-      n = 1e3,#1e6,
+      n = 1e6,
       args_event_times = list(
         mechanism = "correct_FG",
         params = true_params_correct_FG,
@@ -80,7 +82,7 @@ simulation_pipeline <- tar_map(
   tar_target(
     largedat_weibull_cause_spec,
     generate_dataset(
-      n = 1e3,#1e6,
+      n = 1e6,
       args_event_times = list(
         mechanism = "misspec_FG",
         params = params_weibull_lfps,
@@ -96,20 +98,48 @@ simulation_pipeline <- tar_map(
     recover_fg_lps(largedat_weibull_cause_spec)
   ),
 
-  # True cumulative incidences won't depend on censoring
-  refpats_cuminc <- tar_map(
-    unlist = FALSE,
+  # This are the actual simulation replications, iterate over the remaining scenario parameters
+  tar_map_rep(
+    name = simreps,
     values = expand.grid(
-      "failure_time_model" = c("correct_FG", "misspec_FG"),
-      "X" = unique(reference_patients$X),
-      "Z" = unique(reference_patients$Z),
+      "failure_time_model" = failure_time_model,
+      "censoring_type" = censoring_type,
       stringsAsFactors = FALSE
     ),
+    command = one_replication(
+      args_event_times = list(
+        mechanism = failure_time_model,
+        censoring_type = censoring_type,
+        params = switch(
+          failure_time_model,
+          "correct_FG" = true_params_correct_FG,
+          "misspec_FG" = params_weibull_lfps
+        )
+      ),
+      args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
+      args_imputations = list(m = 25, iters = 30, rjlimit = 1000),
+      args_predictions = list(timepoints = pred_timepoints),
+      true_betas = switch(
+        failure_time_model,
+        "correct_FG" = true_params_correct_FG[["cause1"]][["betas"]],
+        "misspec_FG" = largedat_weibull_FG_lfps
+      )
+    ) |>
+      cbind(prob_space = p),
+    reps = 1,
+    batches = 1,
+    combine = TRUE
+  ),
+
+  # Here we keep the true cumulative incidence values for the reference patients
+  refpats_cuminc <- tar_map(
+    unlist = FALSE,
+    values = list("failure_time_model" = failure_time_model),
     tar_target(
       true_cuminc,
       compute_true_cuminc(
         t = pred_timepoints,
-        newdat = cbind.data.frame("X" = X, "Z" = Z),
+        newdat = cbind.data.frame(X = reference_patients$X, Z = reference_patients$Z),
         params = switch(
           failure_time_model,
           "correct_FG" = true_params_correct_FG,
@@ -117,43 +147,19 @@ simulation_pipeline <- tar_map(
         ),
         model_type = failure_time_model
       ) |>
-        cbind("failure_time_model" = failure_time_model, "X" = X, "Z" = Z)
+        cbind(
+          "failure_time_model" = failure_time_model,
+          "X" = reference_patients$X,
+          "Z" = reference_patients$Z,
+          "prob_space" = p
+        ),
+      pattern = map(reference_patients)
     )
   ),
   tar_combine(
-    refpats_cuminc_p,
-    refpats_cuminc[["true_cuminc"]],
-    command = dplyr::bind_rows(!!!.x)
-  ),
-
-  # This are the actual simulation replication, iterate over the remaining scenario parameters
-  tar_map_rep(
-    name = prob_space, # for the nice names after
-    values = scenarios,
-    command = one_replication(
-      args_event_times = list(
-        mechanism = failure_time_model,
-        params = switch(
-          failure_time_model,
-          "correct_FG" = true_params_correct_FG,
-          "misspec_FG" = params_weibull_lfps
-        ),
-        censoring_type = censoring_type
-      ),
-      args_missingness = list(
-        mech_params = list("prob_missing" = 0.05, "mechanism_expr" = "Z") # remember to change to vals in sim protocol
-      ),
-      args_imputations = list(m = 2, iters = 1, rjlimit = 1000),
-      args_predictions = list(timepoints = pred_timepoints),
-      true_betas = switch(
-        failure_time_model,
-        "correct_FG" = true_params_correct_FG[["cause1"]][["betas"]],
-        "misspec_FG" = largedat_weibull_FG_lfps
-      )
-    ),
-    reps = 1,
-    batches = 1,
-    combine = TRUE
+   refpats_cuminc_combined,
+   refpats_cuminc[["true_cuminc"]],
+   command = dplyr::bind_rows(!!!.x)
   )
 )
 
@@ -162,15 +168,19 @@ list(
   prediction_settings,
   simulation_pipeline,
   tar_combine(
-    all_sims,
-    simulation_pipeline[["prob_space"]],
-    command = dplyr::bind_rows(!!!.x, .id = "prob_space")
+    all_simulations,
+    simulation_pipeline[["simreps"]],
+    command = dplyr::bind_rows(!!!.x)
   ),
   tar_combine(
     all_true_cuminc,
-    simulation_pipeline[["refpats_cuminc_p"]],
-    command = dplyr::bind_rows(!!!.x, .id = "prob_space")
+    simulation_pipeline[["refpats_cuminc_combined"]],
+    command = dplyr::bind_rows(!!!.x)
   )
+
+  # Here we pool predictions etc.
 )
+
+# Check tar meta and object sizes
 
 # Might need to add least-false true onto the dataframe

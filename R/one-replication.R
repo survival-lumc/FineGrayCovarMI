@@ -115,6 +115,8 @@ one_replication <- function(args_event_times,
   # Method 5: SMC-FCS Fine-Gray
   df_smcfcs_finegray <- data.frame(dat)
   D_levels <- levels(df_smcfcs_finegray$D)
+
+  # THIS NEEDS TO BE EDITED for when no cens!!
   if (!(0 %in% D_levels)) levels(df_smcfcs_finegray$D) <- c(0, D_levels)
   df_smcfcs_finegray$D <-  as.numeric(df_smcfcs_finegray$D) - 1L
 
@@ -186,7 +188,7 @@ one_replication <- function(args_event_times,
   ), by = method]
 
   # Add some scenario identifiers (maybs remove this? taken care by targets?)
-  method_summaries[, scen_summary := list(args_event_times)]
+  #method_summaries[, scen_summary := list(args_event_times)]
 
   # Eventually check if too heavy..
   return(method_summaries)
