@@ -7,8 +7,7 @@ library("here")
 
 # Source other packages/helper functions
 source(here("packages.R"))
-helper_functions <- list.files(here("R"), full.names = TRUE)
-invisible(lapply(helper_functions, source))
+invisible(lapply(list.files(here("R"), full.names = TRUE), source))
 
 # (MAKE INTO TARGETS MARKDOWN!)
 
@@ -22,12 +21,16 @@ plan(callr)
 # over that parameter separately
 prob_space_domin <- c("low_p" = 0.25, "high_p" = 0.75)
 
-# Rest of scenario parameters are stores in standard data.frame
+# Rest of scenario parameters are stored in standard data.frame
 scenarios <- expand.grid(
   "failure_time_model" = c("correct_FG", "misspec_FG"),
   "censoring_type" = c("none", "exponential"),#, "uniform"),
   stringsAsFactors = FALSE
 )
+
+# Prediction settings
+prediction_settings <- list(tar_target(pred_timepoints, seq(1, 10, by = 1)))
+reference_patients <- expand.grid(X = c(0, 1), Z = c(0, 1))
 
 # Here we start the pipeline
 simulation_pipeline <- tar_map(
@@ -93,6 +96,36 @@ simulation_pipeline <- tar_map(
     recover_fg_lps(largedat_weibull_cause_spec)
   ),
 
+  # True cumulative incidences won't depend on censoring
+  refpats_cuminc <- tar_map(
+    unlist = FALSE,
+    values = expand.grid(
+      "failure_time_model" = c("correct_FG", "misspec_FG"),
+      "X" = unique(reference_patients$X),
+      "Z" = unique(reference_patients$Z),
+      stringsAsFactors = FALSE
+    ),
+    tar_target(
+      true_cuminc,
+      compute_true_cuminc(
+        t = pred_timepoints,
+        newdat = cbind.data.frame("X" = X, "Z" = Z),
+        params = switch(
+          failure_time_model,
+          "correct_FG" = true_params_correct_FG,
+          "misspec_FG" = params_weibull_lfps
+        ),
+        model_type = failure_time_model
+      ) |>
+        cbind("failure_time_model" = failure_time_model, "X" = X, "Z" = Z)
+    )
+  ),
+  tar_combine(
+    refpats_cuminc_p,
+    refpats_cuminc[["true_cuminc"]],
+    command = dplyr::bind_rows(!!!.x)
+  ),
+
   # This are the actual simulation replication, iterate over the remaining scenario parameters
   tar_map_rep(
     name = prob_space, # for the nice names after
@@ -108,11 +141,17 @@ simulation_pipeline <- tar_map(
         censoring_type = censoring_type
       ),
       args_missingness = list(
-        mech_params = list("prob_missing" = 0.1, "mechanism_expr" = "Z") # remember to change to vals in sim protocol
+        mech_params = list("prob_missing" = 0.05, "mechanism_expr" = "Z") # remember to change to vals in sim protocol
       ),
-      args_imputations = list(m = 2, iters = 1, rjlimit = 1000)
+      args_imputations = list(m = 2, iters = 1, rjlimit = 1000),
+      args_predictions = list(timepoints = pred_timepoints),
+      true_betas = switch(
+        failure_time_model,
+        "correct_FG" = true_params_correct_FG[["cause1"]][["betas"]],
+        "misspec_FG" = largedat_weibull_FG_lfps
+      )
     ),
-    reps = 2,
+    reps = 1,
     batches = 1,
     combine = TRUE
   )
@@ -120,10 +159,16 @@ simulation_pipeline <- tar_map(
 
 # Here we bring together all the simulation scenarios
 list(
+  prediction_settings,
   simulation_pipeline,
   tar_combine(
     all_sims,
     simulation_pipeline[["prob_space"]],
+    command = dplyr::bind_rows(!!!.x, .id = "prob_space")
+  ),
+  tar_combine(
+    all_true_cuminc,
+    simulation_pipeline[["refpats_cuminc_p"]],
     command = dplyr::bind_rows(!!!.x, .id = "prob_space")
   )
 )

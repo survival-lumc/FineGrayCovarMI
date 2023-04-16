@@ -32,7 +32,12 @@ extract_FGR_essentials <- function(FGR_fit,
 # Argument scenario ids? or pred times??
 one_replication <- function(args_event_times,
                             args_missingness,
-                            args_imputations) {
+                            args_imputations,
+                            args_predictions,
+                            ...) {
+
+  #
+  extra_args <- list(...)
 
   # Generate data
   n <- 2000L
@@ -110,9 +115,7 @@ one_replication <- function(args_event_times,
   # Method 5: SMC-FCS Fine-Gray
   df_smcfcs_finegray <- data.frame(dat)
   D_levels <- levels(df_smcfcs_finegray$D)
-  if (!(0 %in% D_levels)) {
-    levels(df_smcfcs_finegray$D) <- c(0, D_levels)
-  }
+  if (!(0 %in% D_levels)) levels(df_smcfcs_finegray$D) <- c(0, D_levels)
   df_smcfcs_finegray$D <-  as.numeric(df_smcfcs_finegray$D) - 1L
 
   #df_smcfcs_finegray <- as.
@@ -139,11 +142,7 @@ one_replication <- function(args_event_times,
 
   # Grid of months for predictions
   #pred_times <- round(seq(0, 10, by = 1 / 12), digits = 3)
-  pred_times <- 1:10 # or every 6 months??
-
-  # Editttt
-  #timepoints <- pred_times
-  #FGR_fit <- mod_CCA
+  pred_times <- args_predictions$timepoints #1:10 # or every 6 months??
 
   # Fit models in each imputed dataset
   nested_impdats[, mods := .(
@@ -179,7 +178,14 @@ one_replication <- function(args_event_times,
     summaries_impdats
   )
 
-  # Add some scenario identifiers
+  # Keep essential columns (remove MI-specific cols), and bind together with true betas
+  # ("true" are the least-false parameters in the misspecified scenarios)
+  essential_cols <- colnames(tidy(mod_CCA$crrFit, conf.int = TRUE))
+  method_summaries[, coefs_summary := .(
+    list(cbind(coefs_summary[[1]][, essential_cols], "true" = extra_args$true_betas))
+  ), by = method]
+
+  # Add some scenario identifiers (maybs remove this? taken care by targets?)
   method_summaries[, scen_summary := list(args_event_times)]
 
   # Eventually check if too heavy..

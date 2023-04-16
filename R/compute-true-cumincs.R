@@ -1,9 +1,20 @@
 # TO BE EDITED!!
+weibull_hazard <- function(t, x, params, type = "hazard") {
+  lp <- drop(x %*% params[["betas"]])
+  rate <- params[["base_rate"]] * exp(lp)
+  if (type == "hazard") {
+    rate * params[["base_shape"]] * t^(params[["base_shape"]] - 1)
+  } else { # Cumulative
+    rate * t^params[["base_shape"]]
+  }
+}
+
 compute_true_cuminc <- function(t,
                                 newdat,
                                 params,
-                                model_type = c("indirect", "csh_based", "direct", "both_fg"),
-                                predictor_formulas) {
+                                model_type = c("correct_FG", "misspec_FG")) {
+
+  predictor_formulas <- lapply(params, "[[", "formula")
 
   # Prepare model matrices
   modmats <- lapply(predictor_formulas, function(form) {
@@ -16,60 +27,40 @@ compute_true_cuminc <- function(t,
   # Get true values
   model_type <- match.arg(model_type)
 
-  if (model_type == "indirect") {
+  if (model_type == "misspec_FG") {
 
-    # Cause 1 first
-    cumhaz_cause1 <- haz_sd_cause1(t = t, x = x_cause1, params[["cause1"]], type = "cumulative")
-    cuminc_cause1 <- 1 - exp(-cumhaz_cause1)
+    prod <- function(t, cause) {
 
-    # Cause 2
-    prod <-  function(t) {
-      haz <- haz_cs_cause2(t, x_cause2, params[["cause2"]], type = "hazard")
-      cumhaz_cause1 <- haz_cs_cause1(t, x_cause1, params[["cause1"]], params[["cause2"]], type = "cumulative")
-      cumhaz_cause2 <- haz_cs_cause2(t, x_cause2, params[["cause2"]], type = "cumulative")
+      haz <- switch(
+        cause,
+        "1" = weibull_hazard(t, x_cause1, params[["cause1"]], type = "hazard"),
+        "2" = weibull_hazard(t, x_cause2, params[["cause2"]], type = "hazard")
+      )
 
-      haz * exp(-cumhaz_cause1 - cumhaz_cause2)
-    }
-
-    ci_func <- Vectorize(function(upp) {
-      if (upp == 0) upp <- .Machine$double.eps
-      integrate(prod, lower = 0, upper = upp)$value
-    })
-
-    res <- cbind.data.frame(
-      "time" = t,
-      "cause1" = cuminc_cause1,
-      "cause2" = ci_func(t)
-    )
-
-  } else if (model_type == "csh_based") {
-
-    prod <-  function(t, cause) {
-
-      haz <- if (cause == 1) {
-        haz_cs_cause2(t, x_cause1, params[["cause1"]], type = "hazard") # same func
-      } else {
-        haz_cs_cause2(t, x_cause2, params[["cause2"]], type = "hazard")
-      }
-
-      cumhaz_cause1 <- haz_cs_cause2(t, x_cause1, params[["cause1"]], type = "cumulative")
-      cumhaz_cause2 <- haz_cs_cause2(t, x_cause2, params[["cause2"]], type = "cumulative")
+      cumhaz_cause1 <- weibull_hazard(t, x_cause1, params[["cause1"]], type = "cumulative")
+      cumhaz_cause2 <- weibull_hazard(t, x_cause2, params[["cause2"]], type = "cumulative")
 
       haz * exp(-cumhaz_cause1 - cumhaz_cause2)
     }
 
+    # If time == 0, cuminc should also be zero, so don't bother integrating
     ci_func <- Vectorize(function(upp, ...) {
-      if (upp == 0) upp <- .Machine$double.eps
-      integrate(prod, lower = 0, upper = upp, ...)$value
+      ifelse(upp == 0, 0, integrate(prod, lower = 0, upper = upp, ...)$value)
     })
+
+    #cuminc <- try(ci_func(t, cause = 1))
+    cuminc <- ci_func(t, cause = 1)
+    #if (inherits(cuminc, "try-error")) {
+    #  cuminc <- ci_func(t, cause = 1, rel.tol = .Machine$double.eps^.05)
+    #}
 
     res <- cbind.data.frame(
       "time" = t,
-      "cause1" = ci_func(t, cause = 1),
-      "cause2" = ci_func(t, cause = 2)
+      "cuminc" = cuminc#,
+      #"cause2" = ci_func(t, cause = 2)
     )
 
-  } else if (model_type == "direct") {
+  } else if (model_type == "correct_FG") {
 
     # Cause1
     hr_sd <- drop(exp(x_cause1 %*% params[["cause1"]][["betas"]]))
@@ -86,31 +77,10 @@ compute_true_cuminc <- function(t,
 
     res <- cbind.data.frame(
       "time" = t,
-      "cause1" = cuminc_cause1,
-      "cause2" = cuminc_cause2
+      "cuminc" = cuminc_cause1#,
+      #"cause2" = cuminc_cause2
     )
 
-  } else if (model_type == "both_fg") {
-
-    # Cause 1
-    hr_sd1 <- drop(exp(x_cause1 %*% params[["cause1"]][["betas"]]))
-    p1 <- params[["cause1"]][["p"]]
-    shape1 <- params[["cause1"]][["base_shape"]]
-    rate1 <- params[["cause1"]][["base_rate"]]
-    cuminc_cause1 <- 1 - (1 - p1 * (1 - exp(-rate1 * t^shape1)))^hr_sd1
-
-    # Cause 2
-    hr_sd2 <- drop(exp(x_cause2 %*% params[["cause2"]][["betas"]]))
-    p2 <- params[["cause2"]][["p"]]
-    shape2 <- params[["cause2"]][["base_shape"]]
-    rate2 <- params[["cause2"]][["base_rate"]]
-    cuminc_cause2 <- 1 - (1 - p2 * (1 - exp(-rate2 * t^shape2)))^hr_sd2
-
-    res <- cbind.data.frame(
-      "time" = t,
-      "cause1" = cuminc_cause1,
-      "cause2" = cuminc_cause2
-    )
   }
 
   return(res)
