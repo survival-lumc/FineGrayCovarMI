@@ -22,16 +22,45 @@ df_coefs <- rbindlist(
 
 df_coefs[, term := ifelse(grepl(pattern = "^X", term), "X", as.character(term))]
 
-df_coefs |>
-  ggplot(aes(method, estimate, col = method, shape = term)) +
-  geom_point(size = 3) +
+df_coefs[term == "X"] |>
+  ggplot(aes(method, estimate, col = method)) +
+  geom_jitter(size = 2.5, width = 0.25, alpha = 0.8) +
   facet_grid(failure_time_model * prob_space ~ censoring_type) +
   theme_bw(base_size = 16) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
     legend.position = "none"
   ) +
-  geom_hline(aes(yintercept = true), linetype = "dotted")
+  geom_hline(aes(yintercept = true), linetype = "dotted") +
+  stat_summary(
+    fun = mean,
+    fun.min = mean,
+    fun.max = mean,
+    geom = "crossbar",
+    width = 0.75,
+    color = "black"
+  )
+
+# Then Z
+df_coefs[term == "Z"] |>
+  ggplot(aes(method, estimate, col = method)) +
+  geom_jitter(size = 2.5, width = 0.25, alpha = 0.8) +
+  facet_grid(failure_time_model * prob_space ~ censoring_type) +
+  theme_bw(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  ) +
+  geom_hline(aes(yintercept = true), linetype = "dotted") +
+  stat_summary(
+    fun = mean,
+    fun.min = mean,
+    fun.max = mean,
+    geom = "crossbar",
+    width = 0.75,
+    color = "black"
+  )
+
 # pspace thing can be edited later..
 
 

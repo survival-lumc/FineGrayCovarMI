@@ -27,7 +27,7 @@ plot(x, punif(x, 0.5, 5), type = "l")
 #.. some more people early on. Easy way: raise the CDF to a fractional power
 #.. this dist will still be super easy to sample from
 
-curvyness <- 0.1
+curvyness <- 0.3
 
 plot(x, (x - 0.5) / 4.5, type = "l")
 lines(x, ((x - 0.5) / 4.5)^curvyness, lty = "dashed")

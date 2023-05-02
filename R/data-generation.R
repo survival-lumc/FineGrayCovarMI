@@ -91,7 +91,7 @@ add_event_times <- function(dat,
   if (censoring_type %in% c("exponential", "curvy_uniform")) {
 
     # Relevant only for curvy uniform
-    curvyness <- 0.1
+    curvyness <- 0.3
     unif_low <- censoring_params$curvy_uniform[1]
     unif_upp <- censoring_params$curvy_uniform[2]
 
