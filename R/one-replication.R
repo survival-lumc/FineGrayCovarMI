@@ -13,6 +13,8 @@ extract_mod_essentials <- function(fit,
   } else {
     # For a coxph object (when censoring time is known): predictCox() gives baseline by default
     base_cuminc <- 1 - predictCox(fit, times = timepoints, centered = FALSE)$survival
+    # When timepoint > max time in data, predictCox gives NA, just give max cuminc instead
+    if (anyNA(base_cuminc)) base_cuminc[is.na(base_cuminc)] <- max(base_cuminc, na.rm = TRUE)
     coefs <- fit$coefficients
   }
 
@@ -29,9 +31,9 @@ extract_mod_essentials <- function(fit,
 
 # Add simple tweaked versions of broom::tidy() and mice::pool() so it
 # plays just fine just FGR (by using the underlying crrFit object)
-tidy_tweaked <- function(x) {
+tidy_tweaked <- function(x, ...) {
   if (inherits(x, "FGR")) x <- x$crrFit
-  broom::tidy(x)
+  broom::tidy(x, ...)
 }
 
 pool_tweaked <- function(object, ...) {
@@ -66,8 +68,7 @@ one_replication <- function(args_event_times,
   add_cumhaz_to_dat(dat)
 
   # Are censoring times assumed to be known?
-  # Yes when args_event_times$censoring_type == "curvy uniform" - EDIT LATER
-  cens_time_known <- FALSE
+  cens_time_known <- if (args_event_times$censoring_type == "curvy_uniform") TRUE else FALSE
 
   # If censoring times are known: set competing event times to their censoring time
   # The marginal cumulative subdistribution hazard is re-estimated based on this
@@ -179,12 +180,13 @@ one_replication <- function(args_event_times,
 
   # Create nested df with imputed datasets
   nested_impdats <- data.table(
-    method = c("mice_comp", "mice_subdist", "smcfcs_finegray", "smcfcs_comp"),
+    method = c("mice_comp", "mice_subdist", "smcfcs_comp", "smcfcs_finegray"),
     imp_dats = c(
       list(complete(mice_comp, action = "all")),
       list(complete(mice_subdist, action = "all")),
       list(smcfcs_comp$impDatasets),
-      list(smcfcs_finegray$impDatasets)
+      list(smcfcs_finegray$impDatasets) #should these be pooled separately on
+      # newtimes, newevent?
     )
   )
 
@@ -231,7 +233,6 @@ one_replication <- function(args_event_times,
   method_summaries[, coefs_summary := .(
     list(cbind(coefs_summary[[1]][, essential_cols], "true" = extra_args$true_betas))
   ), by = method]
-
 
   # Eventually check if object too heavy due to nesting
   return(method_summaries)

@@ -21,10 +21,10 @@ plan(callr)
 # over that parameter separately
 prob_space_domin <- c("low_p" = 0.15, "high_p" = 0.65)
 failure_time_model <- c("correct_FG", "misspec_FG")
-censoring_type <- c("none", "exponential")#, "uniform"),
+censoring_type <- c("none", "exponential", "curvy_uniform")
 
 # Prediction settings
-pred_timepoints <- seq(0, 5, by = 1)
+pred_timepoints <- seq(0, 5, by = 0.25)
 prediction_settings <- list(
   tar_target(
     reference_patients,
@@ -93,10 +93,7 @@ simulation_pipeline <- tar_map(
   ),
   # Now recover the least-false weibull parameters for that setting,
   # .. these are our 'true' values
-  tar_target(
-    largedat_weibull_FG_lfps,
-    recover_fg_lps(largedat_weibull_cause_spec)
-  ),
+  tar_target(largedat_weibull_FG_lfps, recover_fg_lps(largedat_weibull_cause_spec)),
 
   # This are the actual simulation replications, iterate over the remaining scenario parameters
   tar_map_rep(
@@ -117,7 +114,7 @@ simulation_pipeline <- tar_map(
         )
       ),
       args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-      args_imputations = list(m = 25, iters = 30, rjlimit = 1000),
+      args_imputations = list(m = 2, iters = 2, rjlimit = 1000), #list(m = 25, iters = 30, rjlimit = 1000),
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
         failure_time_model,
@@ -182,5 +179,4 @@ list(
 )
 
 # Check tar meta and object sizes
-
 # Might need to add least-false true onto the dataframe

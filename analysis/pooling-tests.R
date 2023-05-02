@@ -21,6 +21,17 @@ df_coefs <- rbindlist(
 )
 
 df_coefs[, term := ifelse(grepl(pattern = "^X", term), "X", as.character(term))]
+
+df_coefs |>
+  ggplot(aes(method, estimate, col = method, shape = term)) +
+  geom_point(size = 3) +
+  facet_grid(failure_time_model * prob_space ~ censoring_type) +
+  theme_bw(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  ) +
+  geom_hline(aes(yintercept = true), linetype = "dotted")
 # pspace thing can be edited later..
 
 

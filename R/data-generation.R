@@ -1,8 +1,4 @@
-# Based on new protocol - add documentation after
-
-# Use brackets if passing names
-
-# For Weibull simulation
+# For simulating from Weibull distribution in shape + rate parametrization
 rweibull_KM <- function(n, shape, rate) {
   (-log(runif(n)) / rate)^(1 / shape)
 }
@@ -14,7 +10,7 @@ generate_covariates <- function(n) {
   return(dat)
 }
 
-#
+# Generate cause 1 times in the 'squeezing' mechanism/"correct_FG"
 generate_direct_times <- function(U, x, params) {
   p <- params$p
   hr <- exp(x %*% params$betas)
@@ -26,8 +22,8 @@ generate_direct_times <- function(U, x, params) {
 add_event_times <- function(dat,
                             mechanism = c("correct_FG", "misspec_FG"),
                             params,
-                            censoring_params = list("exponential" = 0.45, "uniform" = c(2, 4)), # these are fixed hereeee
-                            censoring_type = c("none", "exponential", "uniform")) {
+                            censoring_params = list("exponential" = 0.5, "curvy_uniform" = c(0.5, 5)), # these are fixed hereeee
+                            censoring_type = c("none", "exponential", "curvy_uniform")) {
 
   # Match arguments
   mechanism <- match.arg(mechanism)
@@ -92,13 +88,18 @@ add_event_times <- function(dat,
   }
 
   # Add censoring
-  if (censoring_type %in% c("exponential", "uniform")) {
+  if (censoring_type %in% c("exponential", "curvy_uniform")) {
 
-    # Add the curvy uniform here in a bit
+    # Relevant only for curvy uniform
+    curvyness <- 0.1
+    unif_low <- censoring_params$curvy_uniform[1]
+    unif_upp <- censoring_params$curvy_uniform[2]
+
+    # Draw censoring times
     dat[, cens_time := switch(
       censoring_type,
       exponential = rexp(.N, rate = censoring_params$exponential),
-      uniform = runif(.N, min = censoring_params$uniform[1], max = censoring_params$uniform[2]),
+      curvy_uniform = (unif_upp - unif_low) * runif(.N)^(1 / curvyness) + unif_low
     )]
 
     dat[cens_time < time, ':=' (D = 0, time = cens_time)]
@@ -111,6 +112,7 @@ add_event_times <- function(dat,
   return(dat)
 }
 
+# Add missing values
 add_missingness <- function(dat,
                             mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")) {
 
@@ -122,9 +124,7 @@ add_missingness <- function(dat,
 
     # Shift intercept such that average prop missing = prob_missing
     intercept_shift <- uniroot(
-      f = function(eta_0, linpred, prob) {
-        mean(plogis(eta_0 + linpred)) - prob
-      },
+      f = function(eta_0, linpred, prob) mean(plogis(eta_0 + linpred)) - prob,
       interval = c(-25, 25),
       extendInt = "yes",
       linpred = linpred,
@@ -142,7 +142,7 @@ add_missingness <- function(dat,
   return(dat)
 }
 
-# To prepare for imputations
+# A tailored version of mice::nelsonaalen()
 compute_marginal_cumhaz <- function(timevar,
                                     statusvar,
                                     cause, # number/character indicating cause of interest
@@ -180,7 +180,7 @@ compute_marginal_cumhaz <- function(timevar,
   return(hazard[idx, "hazard"])
 }
 
-# Find better way to use this; all code to here was cause agnostic..
+# Find better way to use this; all code to here was cause number agnostic
 add_cumhaz_to_dat <- function(dat) {
 
   dat[, ':=' (
@@ -208,6 +208,7 @@ add_cumhaz_to_dat <- function(dat) {
   return(dat)
 }
 
+# Wrapper function to generate single dataset
 generate_dataset <- function(n,
                              args_event_times,
                              args_missingness) {
@@ -222,7 +223,7 @@ generate_dataset <- function(n,
 recover_weibull_lfps <- function(large_dat,
                                  params_correct_FG) {
 
-  # Note that survreg not affected by timefix issues, see vignette
+  # Note: survreg not affected by timefix issues, see vignette
 
   # Recover LFPs for cause 1
   form_cs1 <- update(params_correct_FG$cause1$formula, Surv(time, D == 1) ~ .)
@@ -273,10 +274,3 @@ recover_fg_lps <- function(large_dat) {
   )
   coef(mod)
 }
-
-
-# Later functions for getting true cumulative incidences (vectorised?)
-
-# Will need morisot function to pool pred probs
-
-# Nested data.tables??
