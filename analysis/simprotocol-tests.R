@@ -1,4 +1,4 @@
-# To-do/tests:
+# Tests:
 # - Get actual censoring rates (for unif and exp)
 # - Test out different pred times
 # - Check nested is still not defeated by memory, otherwise always return one
@@ -6,14 +6,15 @@
 # - Adjust methods for time when you do know the eventual censoring time
 # - Figure out how to store/call true things after?
 # - Continue with prediction tings
+# - specific censoring rate for specific p?
 
 
 args_event_times <- list(
   mechanism = "misspec_FG",
   params = tar_read(params_weibull_lfps_0.75),
-  censoring_type = "exponential",
-  #censoring_type = "uniform",
-  censoring_params = list("exponential" = 0.45, "uniform" = c(0.1, 10))
+  #censoring_type = "exponential",
+  censoring_type = "uniform",
+  censoring_params = list("exponential" = 0.45, "uniform" = c(0.1, 3))
 )
 
 
@@ -45,8 +46,8 @@ dat <- generate_dataset(
   list(
     mechanism = "correct_FG",
     params = tar_read(true_params_correct_FG_0.25),
-    censoring_type = "uniform",
-    censoring_params = list("exponential" = 0.45, "uniform" = c(0.1, 10))
+    censoring_type = "exponential",
+    censoring_params = list("exponential" = 0.45, "uniform" = c(0, 3))
   ),
   list(mech_params = list("prob_missing" = 0, "mechanism_expr" = "1"))
 )
@@ -55,6 +56,8 @@ dat <- generate_dataset(
 # .. and need to change code so it work in case of admin censoring
 dat
 prop.table(table(dat$D))
+plot(survfit(Surv(time, D) ~  1, data = dat))
+prodlim(Hist(time, factor(D)) ~ 1, data = dat) |> plot()
 
 FGR(Hist(time, D) ~ X +Z, data = dat, cause = 1)
 

@@ -114,13 +114,12 @@ one_replication <- function(args_event_times,
 
   # Method 5: SMC-FCS Fine-Gray
   df_smcfcs_finegray <- data.frame(dat)
-  D_levels <- levels(df_smcfcs_finegray$D)
 
-  # THIS NEEDS TO BE EDITED for when no cens!!
-  if (!(0 %in% D_levels)) levels(df_smcfcs_finegray$D) <- c(0, D_levels)
-  df_smcfcs_finegray$D <-  as.numeric(df_smcfcs_finegray$D) - 1L
+  browser()
 
-  #df_smcfcs_finegray <- as.
+  # Make indicator numeric
+  df_smcfcs_finegray$D <- as.numeric(as.character(df_smcfcs_finegray$D))
+
   smcfcs_finegray <- smcfcs.finegray(
     originaldata = df_smcfcs_finegray,
     smformula = "Surv(time, D) ~ X + Z",
@@ -130,6 +129,10 @@ one_replication <- function(args_event_times,
     numit = args_imputations$iters,
     rjlimit = args_imputations$rjlimit,
   )
+
+  ## ADD AN IFELSE HERE..
+  # If cens time is known, process the data, and just just smcfcs function with method
+  # coxph..
 
   # Create nested df with imputed datasets
   nested_impdats <- data.table(

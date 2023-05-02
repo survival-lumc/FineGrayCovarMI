@@ -24,7 +24,7 @@ failure_time_model <- c("correct_FG", "misspec_FG")
 censoring_type <- c("none", "exponential")#, "uniform"),
 
 # Prediction settings
-pred_timepoints <- seq(1, 10, by = 1)
+pred_timepoints <- seq(0, 5, by = 1)
 prediction_settings <- list(
   tar_target(
     reference_patients,
