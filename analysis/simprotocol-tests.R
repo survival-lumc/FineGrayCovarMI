@@ -10,17 +10,17 @@
 
 
 args_event_times <- list(
-  mechanism = "misspec_FG",
-  params = tar_read(params_weibull_lfps_0.75),
-  #censoring_type = "exponential",
-  censoring_type = "uniform",
+  mechanism = "correct_FG",
+  params = tar_read(true_params_correct_FG_0.15),
+  censoring_type = "none",
+  #censoring_type = "uniform",
   censoring_params = list("exponential" = 0.45, "uniform" = c(0.1, 3))
 )
-
-
 args_missingness <- list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z"))
-args_imputations <- list(m = 10, iters = 50, rjlimit = 1000)
-args_predictions <- list(timepoints = seq(1, 10, by = 1))
+args_imputations <- list(m = 2, iters = 2, rjlimit = 1000)
+args_predictions <- list(timepoints = seq(1, 5, by = 1))
+
+
 true_betas <- c(0.75, 0.5)
 
 params <- tar_read(true_params_correct_FG_0.25)

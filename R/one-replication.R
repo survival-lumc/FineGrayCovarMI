@@ -180,13 +180,11 @@ one_replication <- function(args_event_times,
 
   # Create nested df with imputed datasets
   nested_impdats <- data.table(
-    method = c("mice_comp", "mice_subdist", "smcfcs_comp", "smcfcs_finegray"),
+    method = c("mice_comp", "mice_subdist", "smcfcs_comp"),
     imp_dats = c(
       list(complete(mice_comp, action = "all")),
       list(complete(mice_subdist, action = "all")),
-      list(smcfcs_comp$impDatasets),
-      list(smcfcs_finegray$impDatasets) #should these be pooled separately on
-      # newtimes, newevent?
+      list(smcfcs_comp$impDatasets)
     )
   )
 
@@ -209,6 +207,23 @@ one_replication <- function(args_event_times,
     )
   ), by = method]
 
+  # We need to do this separately for smcfcs finegray, since we should make
+  # .. use of the imputed censoring times
+  mods_smcfcs_finegray <- lapply(
+    smcfcs_finegray$impDatasets,
+    function(imp) coxph(Surv(newtimes, newevent) ~ X + Z, data = imp, x = TRUE)
+  )
+  summaries_smcfcs_finegray <- data.table(
+    "method" = "smcfcs_finegray",
+    "coefs_summary" = list(tidy(pool_tweaked(mods_smcfcs_finegray), conf.int = TRUE)),
+    "preds_summary" = list(
+      rbindlist(
+        lapply(mods_smcfcs_finegray, extract_mod_essentials, timepoints = pred_times),
+        idcol = "imp"
+      )
+    )
+  )
+
   # Remove imputation objects to clear memory
   rm(mice_comp, mice_subdist, smcfcs_finegray, smcfcs_comp, nested_impdats)
 
@@ -224,7 +239,8 @@ one_replication <- function(args_event_times,
       coefs_summary = list(tidy_tweaked(mod_CCA, conf.int = TRUE)),
       preds_summary = list(extract_mod_essentials(mod_CCA, pred_times))
     ),
-    summaries_impdats
+    summaries_impdats,
+    summaries_smcfcs_finegray
   )
 
   # Keep essential columns (remove MI-specific cols), and bind together with true betas
