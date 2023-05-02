@@ -4,7 +4,7 @@ dat <- generate_dataset(
   n = 1e3,
   list(
     mechanism = "correct_FG",
-    params = tar_read(true_params_correct_FG_0.25),
+    params = tar_read(true_params_correct_FG_0.15),
     censoring_type = "none"#,
     #censoring_params = list("exponential" = 0.45, "uniform" = c(0, 3))
   ),

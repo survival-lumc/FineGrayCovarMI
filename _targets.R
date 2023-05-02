@@ -1,7 +1,8 @@
-# Possible to-do:
+# Possible to-do/ideas:
 # - rejection rej sampling warnings if using contin X? / penalized logreg for binary X?
 # - Number of imputations per kmi dataset change???..
 # - Add proposed smcfcs.finegray to smcfcs() package
+# - Visualise missing mechanism with jitter plots!
 
 # Workhorse packages
 library("targets")

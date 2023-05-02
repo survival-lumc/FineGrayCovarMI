@@ -4,7 +4,7 @@ library("tarchetypes")
 library("future")
 library("future.callr")
 library("data.table")
-library("survival") # or riskRegression for vectorized predictions?
+library("survival")
 library("broom")
 library("ggplot2")
 library("kmi")

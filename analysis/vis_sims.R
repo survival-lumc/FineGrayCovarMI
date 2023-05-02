@@ -16,6 +16,7 @@ theme_set(
     )
 )
 
+# USE JITTERS LATER!!
 data |>
   ggplot(aes(method, estimate, fill = method)) +
   #geom_jitter() +
