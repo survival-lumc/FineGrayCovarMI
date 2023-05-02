@@ -78,4 +78,16 @@ pooled_preds <- df_preds[, .(
 
 
 tar_load(all_true_cuminc)
-all_true_cuminc
+setDT(all_true_cuminc)
+pooled_preds
+
+# Try a tentative merge
+new_pat
+true_sub <- all_true_cuminc[X == 0 & Z == 1]
+
+merge(pooled_preds, true_sub)[time %in% seq(0, 5, by = 0.5)] |>
+  ggplot(aes(time, pooled_pred)) +
+  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.5) +
+  facet_grid(prob_space * failure_time_model  ~ censoring_type) +
+  geom_line(aes(y = cuminc), col = "black")
+  theme_bw(base_size = 16)
