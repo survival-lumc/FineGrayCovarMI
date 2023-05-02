@@ -74,10 +74,14 @@ one_replication <- function(args_event_times,
   # The marginal cumulative subdistribution hazard is re-estimated based on this
   # new time variables and D == 1 indicator
   if (cens_time_known) {
-    dat[, "time_star" := ifelse(D == 2, cens_time, time)]
+    # Consistency with kmi names
+    dat[, ':=' (
+      newtimes = ifelse(D == 2, cens_time, time),
+      newevent = D_star
+    )]
     dat[, H_subdist_cause1 := compute_marginal_cumhaz(
-      timevar = time_star,
-      statusvar = D_star,
+      timevar = newtimes,
+      statusvar = newevent,
       cause = 1,
       type = "cause_spec"
     )]
@@ -85,7 +89,7 @@ one_replication <- function(args_event_times,
 
   # Analysis model formula; coxph() is used directly when cens_time_known == TRUE
   model_formula <- if (cens_time_known) {
-    Surv(time_star, D_star) ~ X + Z
+    Surv(newtimes, newevent) ~ X + Z
   } else Hist(time, D) ~ X + Z
 
   # Make wrapper for function call
@@ -158,7 +162,7 @@ one_replication <- function(args_event_times,
   smcfcs_finegray <- if (cens_time_known) {
     smcfcs(
       originaldata = data.frame(dat),
-      smformula = "Surv(time_star, D_star) ~ X + Z",
+      smformula = "Surv(newtimes, newevent) ~ X + Z",
       method = meths_smcfcs,
       smtype = "coxph",
       m = args_imputations$m,

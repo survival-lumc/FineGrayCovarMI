@@ -20,13 +20,13 @@ invisible(lapply(list.files(here("R"), full.names = TRUE), source))
 plan(callr)
 
 # For debugging:
-#tar_option_set(error = "null")
+tar_option_set(error = "null")
 
 # Data-generating parameters depend on p-space domination, so we need to iterate
 # over that parameter separately
 prob_space_domin <- c("low_p" = 0.15, "high_p" = 0.65)
 failure_time_model <- c("correct_FG", "misspec_FG")
-censoring_type <- c("none", "exponential", "curvy_uniform")
+censoring_type <- "curvy_uniform" #c("none", "exponential", "curvy_uniform")
 
 # Prediction settings
 pred_timepoints <- seq(0, 5, by = 0.25)
@@ -119,7 +119,7 @@ simulation_pipeline <- tar_map(
         )
       ),
       args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-      args_imputations = list(m = 25, iters = 30, rjlimit = 1000), #list(m = 2, iters = 2, rjlimit = 1000)
+      args_imputations = list(m = 2, iters = 2, rjlimit = 1000), #list(m = 25, iters = 30, rjlimit = 1000), #
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
         failure_time_model,
