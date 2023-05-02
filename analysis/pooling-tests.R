@@ -1,5 +1,10 @@
 tar_load(all_simulations)
 
+# Example for multiple
+#lapply(list(c(1, 1), c(1, 2), c(0.5, 1)), function(x) {
+#  essentials[, .(drop(unlist(coefs) %*% x)), by = c("time", "base_cuminc")]
+#})
+
 # Coefficients
 df_coefs <- rbindlist(
   with(

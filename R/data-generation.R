@@ -94,6 +94,7 @@ add_event_times <- function(dat,
   # Add censoring
   if (censoring_type %in% c("exponential", "uniform")) {
 
+    # Add the curvy uniform here in a bit
     dat[, cens_time := switch(
       censoring_type,
       exponential = rexp(.N, rate = censoring_params$exponential),
@@ -115,8 +116,6 @@ add_missingness <- function(dat,
 
   if (mech_params$prob_missing > 0) {
 
-    #browser()
-
     # Compute part of the linear predictor conditional on covariate
     linpred_expr <- parse(text = mech_params$mechanism_expr)
     linpred <- eval(linpred_expr, envir = dat)
@@ -131,7 +130,6 @@ add_missingness <- function(dat,
       linpred = linpred,
       p = mech_params$prob_missing
     )$`root`
-
 
     # Generate missing indicator, and add NAs
     dat[, ':=' (

@@ -57,6 +57,8 @@ smcfcs.finegray <- function(originaldata,
     lhs_kmi <- paste0("Surv(", paste(outcome_vars, collapse = ", "), " != 0)")
     form_kmi <- reformulate(termlabels = c("1"), response = lhs_kmi)
 
+    # Add option to bootstrap?? See section 5.3.2 Beyersmann book
+
     # Impute missing censoring times in first loop
     kmi_imps <- do.call(
       kmi::kmi,

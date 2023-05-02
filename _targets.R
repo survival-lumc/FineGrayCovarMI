@@ -19,7 +19,7 @@ plan(callr)
 
 # Data-generating parameters depend on p-space domination, so we need to iterate
 # over that parameter separately
-prob_space_domin <- c("low_p" = 0.25, "high_p" = 0.75)
+prob_space_domin <- c("low_p" = 0.15, "high_p" = 0.65)
 failure_time_model <- c("correct_FG", "misspec_FG")
 censoring_type <- c("none", "exponential")#, "uniform"),
 
