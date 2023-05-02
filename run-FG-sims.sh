@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH -J MI-FG
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --partition=short
-#SBATCH --time=0-00:30:00 
-#SBATCH --mem=5G
+#SBATCH --ntasks-per-node=12
+#SBATCH --partition=all
+#SBATCH --time=0-05:00:00 
+#SBATCH --mem-per-cpu=8G
 
 
 # Purge
@@ -14,4 +14,4 @@ module purge
 module load statistical/R/4.2.1
 
 # Run imps
-Rscript -e 'targets::tar_make()' #./one-replication_cens.R
+Rscript -e 'targets::tar_make_future(workers = parallelly::availableCores(logical = FALSE))' 
