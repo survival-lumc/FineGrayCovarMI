@@ -1,3 +1,8 @@
+# Possible to-do:
+# - rejection rej sampling warnings if using contin X? / penalized logreg for binary X?
+# - Number of imputations per kmi dataset change???..
+# - Add proposed smcfcs.finegray to smcfcs() package
+
 # Workhorse packages
 library("targets")
 library("tarchetypes")
