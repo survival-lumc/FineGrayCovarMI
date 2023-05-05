@@ -56,6 +56,9 @@ one_replication <- function(args_event_times,
   # Simple way to add true betas to summary data.frame at end
   extra_args <- list(...)
 
+  # Keep formula for the rest
+  form_rhs <- args_event_times$params$cause1$formula
+
   # Generate dataset
   n <- 2000L
   dat <- generate_dataset(
@@ -89,8 +92,8 @@ one_replication <- function(args_event_times,
 
   # Analysis model formula; coxph() is used directly when cens_time_known == TRUE
   model_formula <- if (cens_time_known) {
-    Surv(newtimes, newevent) ~ X + Z
-  } else Hist(time, D) ~ X + Z
+    update(form_rhs, Surv(newtimes, newevent) ~ .)
+  } else update(form_rhs, Hist(time, D) ~ .)
 
   # Make wrapper for function call
   model_fun <- if (cens_time_known) {
@@ -131,8 +134,8 @@ one_replication <- function(args_event_times,
     originaldata = data.frame(dat),
     smtype = "compet",
     smformula = list(
-      "Surv(time, D == 1) ~ X + Z",
-      "Surv(time, D == 2) ~ X + Z"
+      deparse1(update(form_rhs, Surv(time, D == 1) ~ .)),
+      deparse1(update(form_rhs, Surv(time, D == 2) ~ .))
     ),
     method = meths_smcfcs,
     rjlimit = args_imputations$rjlimit,
@@ -162,7 +165,7 @@ one_replication <- function(args_event_times,
   smcfcs_finegray <- if (cens_time_known) {
     smcfcs(
       originaldata = data.frame(dat),
-      smformula = "Surv(newtimes, newevent) ~ X + Z",
+      smformula = deparse1(update(form_rhs, Surv(newtimes, newevent) ~ .)),
       method = meths_smcfcs,
       smtype = "coxph",
       m = args_imputations$m,
@@ -173,7 +176,7 @@ one_replication <- function(args_event_times,
     # In the other case, we use kmi() + smcfcs() combination
     smcfcs.finegray(
       originaldata = data.frame(dat),
-      smformula = "Surv(time, D) ~ X + Z",
+      smformula = deparse1(update(form_rhs, Surv(time, D) ~ .)),
       method = meths_smcfcs,
       cause = 1,
       m = args_imputations$m,
@@ -215,7 +218,7 @@ one_replication <- function(args_event_times,
   # .. use of the imputed censoring times
   mods_smcfcs_finegray <- lapply(
     smcfcs_finegray$impDatasets,
-    function(imp) coxph(Surv(newtimes, newevent) ~ X + Z, data = imp, x = TRUE)
+    function(imp) coxph(update(form_rhs, Surv(newtimes, newevent) ~ .), data = imp, x = TRUE)
   )
   summaries_smcfcs_finegray <- data.table(
     "method" = "smcfcs_finegray",

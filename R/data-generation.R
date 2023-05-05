@@ -265,7 +265,11 @@ recover_weibull_lfps <- function(large_dat,
 # we recover the misspecified FG coefficients by simpler way
 # (this is quicker than variance = FALSE)
 recover_fg_lps <- function(large_dat,
-                           censoring_type = "none") {
+                           censoring_type,
+                           params) {
+
+  # Predictors part of the formula
+  form_rhs <- params$cause1$formula
 
   if (censoring_type == "none") {
     # We have to set all event 2 times to large number, larger then max event 1 time
@@ -273,13 +277,13 @@ recover_fg_lps <- function(large_dat,
     eps <- 0.1
     large_dat[D == 2, time := max_ev1_time + eps]
     mod <- coxph(
-      Surv(time, D == 1) ~ X + Z, # make this an argument like the other LFP fun
+      update(form_rhs, Surv(time, D == 1) ~ .),
       data = large_dat,
       control = coxph.control(timefix = FALSE)
     )
     coefs <- coef(mod)
   } else {
-    mod <- FGR(Hist(time, D) ~ X + Z, cause = 1, data = large_dat)
+    mod <- FGR(update(form_rhs, Hist(time, D) ~ .), cause = 1, data = large_dat)
     coefs <- mod$crrFit$coef
   }
   res <- data.frame(

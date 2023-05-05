@@ -88,11 +88,11 @@ simulation_pipeline <- tar_map(
   ),
 
   # FG least-false parameters depend on censoring - recover them
-  # (to-do: pass formulas/params!!)
   tar_target(
     weibull_FG_lfps,
     recover_fg_lps(
       censoring_type = censoring_type_dyn,
+      params = params_weibull_lfps,
       large_dat = generate_dataset(
         n = 2e3, #1e6,
         args_event_times = list(
