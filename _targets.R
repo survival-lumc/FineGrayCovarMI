@@ -107,37 +107,37 @@ simulation_pipeline <- tar_map(
   ),
 
   # This are the actual simulation replications, iterate over the remaining scenario parameters
-  tar_map_rep(
-    name = simreps,
-    values = expand.grid(
-      "failure_time_model" = failure_time_model,
-      "censoring_type" = censoring_type,
-      stringsAsFactors = FALSE
-    ),
-    command = one_replication(
-      args_event_times = list(
-        mechanism = failure_time_model,
-        censoring_type = censoring_type,
-        params = switch(
-          failure_time_model,
-          "correct_FG" = true_params_correct_FG,
-          "misspec_FG" = params_weibull_lfps
-        )
-      ),
-      args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-      args_imputations = list(m = 2, iters = 2, rjlimit = 1000), #list(m = 25, iters = 30, rjlimit = 1000), #
-      args_predictions = list(timepoints = pred_timepoints),
-      true_betas = switch(
-        failure_time_model,
-        "correct_FG" = true_params_correct_FG[["cause1"]][["betas"]],
-        "misspec_FG" = weibull_FG_lfps[weibull_FG_lfps[["censoring_type"]] %in% censoring_type, ][["coefs"]]
-      )
-    ) |>
-      cbind(prob_space = p),
-    reps = 1, # 100 # change to 400!
-    batches = 1,
-    combine = TRUE
-  ),
+  # tar_map_rep(
+  #   name = simreps,
+  #   values = expand.grid(
+  #     "failure_time_model" = failure_time_model,
+  #     "censoring_type" = censoring_type,
+  #     stringsAsFactors = FALSE
+  #   ),
+  #   command = one_replication(
+  #     args_event_times = list(
+  #       mechanism = failure_time_model,
+  #       censoring_type = censoring_type,
+  #       params = switch(
+  #         failure_time_model,
+  #         "correct_FG" = true_params_correct_FG,
+  #         "misspec_FG" = params_weibull_lfps
+  #       )
+  #     ),
+  #     args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
+  #     args_imputations = list(m = 2, iters = 2, rjlimit = 1000), #list(m = 25, iters = 30, rjlimit = 1000), #
+  #     args_predictions = list(timepoints = pred_timepoints),
+  #     true_betas = switch(
+  #       failure_time_model,
+  #       "correct_FG" = true_params_correct_FG[["cause1"]][["betas"]],
+  #       "misspec_FG" = weibull_FG_lfps[weibull_FG_lfps[["censoring_type"]] %in% censoring_type, ][["coefs"]]
+  #     )
+  #   ) |>
+  #     cbind(prob_space = p),
+  #   reps = 1, # 100 # change to 400!
+  #   batches = 1,
+  #   combine = TRUE
+  # ),
 
   # Calculate true cumulative incidences for all reference patients
   tar_target(
@@ -167,11 +167,11 @@ simulation_pipeline <- tar_map(
 list(
   extra_settings,
   simulation_pipeline,
-  tar_combine(
-    all_simulations,
-    simulation_pipeline[["simreps"]],
-    command = dplyr::bind_rows(!!!.x)
-  ),
+  # tar_combine(
+  #   all_simulations,
+  #   simulation_pipeline[["simreps"]],
+  #   command = dplyr::bind_rows(!!!.x)
+  # ),
   tar_combine(
     true_cuminc_all,
     simulation_pipeline[["true_cuminc"]],

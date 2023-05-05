@@ -245,13 +245,13 @@ recover_weibull_lfps <- function(large_dat,
   # Put them in the right format
   params <- list(
     "cause1" = list(
-      "formula" = ~ X + Z,
+      "formula" = params_correct_FG$cause1$formula,
       "betas" = lfps_cs1,
       "base_rate" = base_rate_cs1,
       "base_shape" = shape_cs1
     ),
     "cause2" = list(
-      "formula" = ~ X + Z,
+      "formula" = params_correct_FG$cause2$formula,
       "betas" = lfps_cs2,
       "base_rate" = base_rate_cs2,
       "base_shape" = shape_cs2
