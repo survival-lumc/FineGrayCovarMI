@@ -22,7 +22,11 @@ generate_direct_times <- function(U, x, params) {
 add_event_times <- function(dat,
                             mechanism = c("correct_FG", "misspec_FG"),
                             params,
-                            censoring_params = list("exponential" = 0.5, "curvy_uniform" = c(0.5, 5)), # these are fixed hereeee
+                            censoring_params = list(
+                              "exponential" = 0.5,
+                              "curvy_uniform" = c(0.5, 5),
+                              "curvyness" = 0.3
+                            ), # these are fixed hereeee
                             censoring_type = c("none", "exponential", "curvy_uniform")) {
 
   # Match arguments
@@ -91,7 +95,6 @@ add_event_times <- function(dat,
   if (censoring_type %in% c("exponential", "curvy_uniform")) {
 
     # Relevant only for curvy uniform
-    curvyness <- 0.3
     unif_low <- censoring_params$curvy_uniform[1]
     unif_upp <- censoring_params$curvy_uniform[2]
 
@@ -99,7 +102,7 @@ add_event_times <- function(dat,
     dat[, cens_time := switch(
       censoring_type,
       exponential = rexp(.N, rate = censoring_params$exponential),
-      curvy_uniform = (unif_upp - unif_low) * runif(.N)^(1 / curvyness) + unif_low
+      curvy_uniform = (unif_upp - unif_low) * runif(.N)^(1 / censoring_params$curvyness) + unif_low
     )]
 
     dat[cens_time < time, ':=' (D = 0, time = cens_time)]
@@ -261,16 +264,28 @@ recover_weibull_lfps <- function(large_dat,
 # Because of long computation time of FGR, and memory issues with crprep,
 # we recover the misspecified FG coefficients by simpler way
 # (this is quicker than variance = FALSE)
-recover_fg_lps <- function(large_dat) {
+recover_fg_lps <- function(large_dat,
+                           censoring_type = "none") {
 
-  # We have to set all event 2 times to large number, larger then max event 1 time
-  max_ev1_time <- large_dat[D == 1, .(time = max(time))][["time"]]
-  eps <- 0.1
-  large_dat[D == 2, time := max_ev1_time + eps]
-  mod <- coxph(
-    Surv(time, D == 1) ~ X + Z, # make this an argument like the other LFP fun
-    data = large_dat,
-    control = coxph.control(timefix = FALSE)
+  if (censoring_type == "none") {
+    # We have to set all event 2 times to large number, larger then max event 1 time
+    max_ev1_time <- large_dat[D == 1, .(time = max(time))][["time"]]
+    eps <- 0.1
+    large_dat[D == 2, time := max_ev1_time + eps]
+    mod <- coxph(
+      Surv(time, D == 1) ~ X + Z, # make this an argument like the other LFP fun
+      data = large_dat,
+      control = coxph.control(timefix = FALSE)
+    )
+    coefs <- coef(mod)
+  } else {
+    mod <- FGR(Hist(time, D) ~ X + Z, cause = 1, data = large_dat)
+    coefs <- mod$crrFit$coef
+  }
+  res <- data.frame(
+    "term" = names(coefs),
+    "coefs" = unname(coefs),
+    "censoring_type" = censoring_type
   )
-  coef(mod)
+  return(res)
 }

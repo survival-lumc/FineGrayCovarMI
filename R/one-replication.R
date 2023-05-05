@@ -258,6 +258,6 @@ one_replication <- function(args_event_times,
   return(method_summaries)
 }
 
-# Function later to be used for pooling predictied cumulative incidences
+# Function later to be used for pooling predicted cumulative incidences
 inv_cloglog <- function(x) 1 - exp(-exp(x))
 cloglog <- function(x) log(-log(1 - x))

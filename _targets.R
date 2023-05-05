@@ -3,6 +3,8 @@
 # - Number of imputations per kmi dataset change???..
 # - Add proposed smcfcs.finegray to smcfcs() package
 # - Visualise missing mechanism with jitter plots!
+# - Plot true cumulative incidences at average covariate values? How to get
+# .. true marginal distributions? nah - just plot baseline cumincs
 
 # Workhorse packages
 library("targets")
@@ -31,11 +33,11 @@ censoring_type <- c("none", "exponential", "curvy_uniform")
 
 # Prediction settings
 pred_timepoints <- c(0, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
-prediction_settings <- list(
-  tar_target(
-    reference_patients,
-    expand.grid(X = c(0, 1), Z = c(0, 1))
-  )
+extra_settings <- list(
+  tar_target(reference_patients, expand.grid(X = c(0, 1), Z = c(0, 1))),
+  # We set some of the varying parameters as targets, so we can use dynamic branching later
+  tar_target(failure_time_model_dyn, failure_time_model),
+  tar_target(censoring_type_dyn, censoring_type)
 )
 
 
@@ -56,14 +58,14 @@ simulation_pipeline <- tar_map(
       ),
       "cause2" = list(
         "formula" = ~ X + Z,
-        "betas" = c(0.75, 0.5), # pick some that result in non-zero cause-spec coefs!
-        # .. or doesnt matter since in big p scenario, it works out?
-        "base_rate" = 1, # might need to increase this to avoid the above?
+        "betas" = c(0.75, 0.5),
+        "base_rate" = 1,
         "base_shape" = 0.75
       )
     )
   ),
-  # Generate large dataset
+  # Generate large dataset (which we keep as a target so that we can show
+  # non-param cumincs)
   tar_target(
     largedat_correct_FG,
     generate_dataset(
@@ -84,22 +86,25 @@ simulation_pipeline <- tar_map(
       params_correct_FG = true_params_correct_FG
     )
   ),
-  # Generate large dataset using the Weibull parameters, cause-specific hazards
+
+  # FG least-false parameters depend on censoring - recover them
+  # (to-do: pass formulas/params!!)
   tar_target(
-    largedat_weibull_cause_spec,
-    generate_dataset(
-      n = 1e6,
-      args_event_times = list(
-        mechanism = "misspec_FG",
-        params = params_weibull_lfps,
-        censoring_type = "none"
-      ),
-      args_missingness = list(mech_params = list("prob_missing" = 0))
-    )
+    weibull_FG_lfps,
+    recover_fg_lps(
+      censoring_type = censoring_type_dyn,
+      large_dat = generate_dataset(
+        n = 2e3, #1e6,
+        args_event_times = list(
+          mechanism = "misspec_FG",
+          params = params_weibull_lfps,
+          censoring_type = censoring_type_dyn
+        ),
+        args_missingness = list(mech_params = list("prob_missing" = 0))
+      )
+    ),
+    pattern = map(censoring_type_dyn)
   ),
-  # Now recover the least-false weibull parameters for that setting,
-  # .. these are our 'true' values
-  tar_target(largedat_weibull_FG_lfps, recover_fg_lps(largedat_weibull_cause_spec)),
 
   # This are the actual simulation replications, iterate over the remaining scenario parameters
   tar_map_rep(
@@ -120,55 +125,47 @@ simulation_pipeline <- tar_map(
         )
       ),
       args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-      args_imputations = list(m = 25, iters = 30, rjlimit = 1000), #list(m = 2, iters = 2, rjlimit = 1000), #
+      args_imputations = list(m = 2, iters = 2, rjlimit = 1000), #list(m = 25, iters = 30, rjlimit = 1000), #
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
         failure_time_model,
         "correct_FG" = true_params_correct_FG[["cause1"]][["betas"]],
-        "misspec_FG" = largedat_weibull_FG_lfps
+        "misspec_FG" = weibull_FG_lfps[weibull_FG_lfps[["censoring_type"]] %in% censoring_type, ][["coefs"]]
       )
     ) |>
       cbind(prob_space = p),
-    reps = 100, # change!
+    reps = 1, # 100 # change to 400!
     batches = 1,
     combine = TRUE
   ),
 
-  # Here we keep the true cumulative incidence values for the reference patients
-  refpats_cuminc <- tar_map(
-    unlist = FALSE,
-    values = list("failure_time_model" = failure_time_model),
-    tar_target(
-      true_cuminc,
-      compute_true_cuminc(
-        t = pred_timepoints,
-        newdat = cbind.data.frame(X = reference_patients$X, Z = reference_patients$Z),
-        params = switch(
-          failure_time_model,
-          "correct_FG" = true_params_correct_FG,
-          "misspec_FG" = params_weibull_lfps
-        ),
-        model_type = failure_time_model
-      ) |>
-        cbind(
-          "failure_time_model" = failure_time_model,
-          "X" = reference_patients$X,
-          "Z" = reference_patients$Z,
-          "prob_space" = p
-        ),
-      pattern = map(reference_patients)
-    )
-  ),
-  tar_combine(
-   refpats_cuminc_combined,
-   refpats_cuminc[["true_cuminc"]],
-   command = dplyr::bind_rows(!!!.x)
+  # Calculate true cumulative incidences for all reference patients
+  tar_target(
+    true_cuminc,
+    compute_true_cuminc(
+      t = pred_timepoints,
+      newdat = cbind.data.frame(X = reference_patients$X, Z = reference_patients$Z),
+      params = switch(
+        failure_time_model_dyn,
+        "correct_FG" = true_params_correct_FG,
+        "misspec_FG" = params_weibull_lfps
+      ),
+      model_type = failure_time_model_dyn
+    ) |>
+      cbind(
+        "failure_time_model" = failure_time_model_dyn,
+        "X" = reference_patients$X,
+        "Z" = reference_patients$Z,
+        "prob_space" = p
+      ),
+    # Check against: tidyr::crossing(failure_time_model, tar_read(reference_patients))
+    pattern = cross(reference_patients, failure_time_model_dyn)
   )
 )
 
 # Here we bring together all the simulation scenarios
 list(
-  prediction_settings,
+  extra_settings,
   simulation_pipeline,
   tar_combine(
     all_simulations,
@@ -176,8 +173,8 @@ list(
     command = dplyr::bind_rows(!!!.x)
   ),
   tar_combine(
-    all_true_cuminc,
-    simulation_pipeline[["refpats_cuminc_combined"]],
+    true_cuminc_all,
+    simulation_pipeline[["true_cuminc"]],
     command = dplyr::bind_rows(!!!.x)
   )
 
