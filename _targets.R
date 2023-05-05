@@ -133,7 +133,7 @@ simulation_pipeline <- tar_map(
       )
     ) |>
       cbind(prob_space = p),
-    reps = 1, #400,
+    reps = 400,
     batches = 1,
     combine = TRUE
   ),
@@ -162,6 +162,44 @@ simulation_pipeline <- tar_map(
   )
 )
 
+
+# Try also 2 extra scenarios with big betas
+# Maybe misspecified + well specified with big betas? And exp censoring?
+# If misspecified - need to also generate big dat..
+# For now: just well specified FG?
+extra_sims <- tar_rep(
+  extras,
+  command = one_replication_cens_known(
+    args_event_times = list(
+      mechanism = "correct_FG",
+      censoring_type = "none",
+      params = list(
+        "cause1" = list(
+          "formula" = ~ X + Z,
+          "betas" = c(1, 1),
+          "p" = 0.15,
+          "base_rate" = 1,
+          "base_shape" = 0.75
+        ),
+        "cause2" = list(
+          "formula" = ~ X + Z,
+          "betas" = c(1, 1),
+          "base_rate" = 1,
+          "base_shape" = 0.75
+        )
+      )
+    ),
+    args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
+    args_imputations = list(m = 10, iters = 20, rjlimit = 1000),
+    args_predictions = list(timepoints = pred_timepoints),
+    true_betas = c(1, 1)
+  ) |>
+    cbind(prob_space = 0.15),
+  reps = 400,
+  batches = 1
+)
+
+
 # Here we bring together all the simulation scenarios
 list(
   extra_settings,
@@ -175,13 +213,14 @@ list(
     true_cuminc_all,
     simulation_pipeline[["true_cuminc"]],
     command = dplyr::bind_rows(!!!.x)
-  )
-
+  ),
+  extra_sims
   # Here we pool coefficients and predictions etc.
 )
 
 
-# Try also extra scenario with big betas
+# tar_read(extras) # run this one??
+
 
 # Check tar meta and object sizes
 # Might need to add least-false true onto the dataframe
