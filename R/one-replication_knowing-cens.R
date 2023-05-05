@@ -22,8 +22,10 @@ one_replication_cens_known <- function(args_event_times,
   # Add predictors needed for imputation
   add_cumhaz_to_dat(dat)
 
-  # Are censoring times assumed to be known?
-  cens_time_known <- if (args_event_times$censoring_type == "curvy_uniform") TRUE else FALSE
+  # Are censoring times assumed to be known
+  cens_time_known <- if (
+    args_event_times$censoring_type %in% c("curvy_uniform", "exponential")
+  ) TRUE else FALSE
 
   # If censoring times are known: set competing event times to their censoring time
   # The marginal cumulative subdistribution hazard is re-estimated based on this
@@ -114,7 +116,7 @@ one_replication_cens_known <- function(args_event_times,
 
   # When censoring times are known, we can use smcfcs() directly
   # .. with Surv(time_star, D_star) outcome
-  smcfcs_finegray <- if (cens_time_known) {
+  smcfcs_finegray <- if (args_event_times$censoring_type == "curvy_uniform") {
     smcfcs(
       originaldata = data.frame(dat),
       smformula = deparse1(update(form_rhs, Surv(newtimes, newevent) ~ .)),
@@ -126,8 +128,12 @@ one_replication_cens_known <- function(args_event_times,
     )
   } else {
     # In the other case, we use kmi() + smcfcs() combination
+    df <- data.frame(dat)
+    df <- df[, !(names(df) %in% c("newevent", "newtimes"))]
+    meths_smcfcs <- make.method(df, defaultMethod = c("norm", "logreg", "mlogit", "podds"))
+
     smcfcs.finegray(
-      originaldata = data.frame(dat),
+      originaldata = df,
       smformula = deparse1(update(form_rhs, Surv(time, D) ~ .)),
       method = meths_smcfcs,
       cause = 1,

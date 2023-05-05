@@ -113,7 +113,7 @@ simulation_pipeline <- tar_map(
       "censoring_type" = censoring_type,
       stringsAsFactors = FALSE
     ),
-    command = one_replication(
+    command = one_replication_cens_known( # change!!
       args_event_times = list(
         mechanism = failure_time_model,
         censoring_type = censoring_type,
@@ -124,16 +124,16 @@ simulation_pipeline <- tar_map(
         )
       ),
       args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-      args_imputations = list(m = 1, iters = 1, rjlimit = 1000), #list(m = 25, iters = 30, rjlimit = 1000), #
+      args_imputations = list(m = 10, iters = 20, rjlimit = 1000),
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
         failure_time_model,
         "correct_FG" = true_params_correct_FG[["cause1"]][["betas"]],
-        "misspec_FG" = weibull_FG_lfps[weibull_FG_lfps[["censoring_type"]] %in% censoring_type, ][["coefs"]]
+        "misspec_FG" = weibull_FG_lfps[weibull_FG_lfps[["censoring_type"]] == censoring_type, ][["coefs"]]
       )
     ) |>
       cbind(prob_space = p),
-    reps = 1, # 100 # change to 400!
+    reps = 1, #400,
     batches = 1,
     combine = TRUE
   ),
@@ -177,8 +177,12 @@ list(
     command = dplyr::bind_rows(!!!.x)
   )
 
-  # Here we pool predictions etc.
+  # Here we pool coefficients and predictions etc.
 )
+
+
+# Try also extra scenario with big betas
 
 # Check tar meta and object sizes
 # Might need to add least-false true onto the dataframe
+# Calculate empirical SEs of absolute risk predictions

@@ -261,9 +261,7 @@ recover_weibull_lfps <- function(large_dat,
   return(params)
 }
 
-# Because of long computation time of FGR, and memory issues with crprep,
-# we recover the misspecified FG coefficients by simpler way
-# (this is quicker than variance = FALSE)
+
 recover_FG_lps <- function(large_dat,
                            censoring_type,
                            params) {
@@ -278,13 +276,19 @@ recover_FG_lps <- function(large_dat,
     large_dat[D == 2, time := max_ev1_time + eps]
     mod <- coxph(
       update(form_rhs, Surv(time, D == 1) ~ .),
-      data = large_dat,
-      control = coxph.control(timefix = FALSE)
+      data = large_dat
     )
     coefs <- coef(mod)
+
+    # If no censoring, we can make use of the the fact that we know the censoring times
+    # this saves looaaaads of comp time
   } else {
-    mod <- FGR(update(form_rhs, Hist(time, D) ~ .), cause = 1, data = large_dat)
-    coefs <- mod$crrFit$coef
+    large_dat[, "time_star" := ifelse(D == 2, cens_time, time)]
+    mod <- coxph(
+      update(form_rhs, Surv(time_star, D == 1) ~ .),
+      data = large_dat
+    )
+    coefs <- coef(mod)
   }
 
   # Put into a data.frame, which will be easier for targets
