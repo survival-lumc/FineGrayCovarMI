@@ -4,7 +4,7 @@ weibull_hazard <- function(t, x, params, type = "hazard") {
   rate <- params[["base_rate"]] * exp(lp)
   if (type == "hazard") {
     rate * params[["base_shape"]] * t^(params[["base_shape"]] - 1)
-  } else { # Cumulative
+  } else { # type == "cumulative" for cumulative hazard
     rate * t^params[["base_shape"]]
   }
 }

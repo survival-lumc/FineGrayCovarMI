@@ -1,4 +1,4 @@
-# Add timefix option to crprep()
+# Timefix option added to crprep()
 
 #' Function to create weighted data set for competing risks analyses
 #'

@@ -264,7 +264,7 @@ recover_weibull_lfps <- function(large_dat,
 # Because of long computation time of FGR, and memory issues with crprep,
 # we recover the misspecified FG coefficients by simpler way
 # (this is quicker than variance = FALSE)
-recover_fg_lps <- function(large_dat,
+recover_FG_lps <- function(large_dat,
                            censoring_type,
                            params) {
 
@@ -286,6 +286,8 @@ recover_fg_lps <- function(large_dat,
     mod <- FGR(update(form_rhs, Hist(time, D) ~ .), cause = 1, data = large_dat)
     coefs <- mod$crrFit$coef
   }
+
+  # Put into a data.frame, which will be easier for targets
   res <- data.frame(
     "term" = names(coefs),
     "coefs" = unname(coefs),
