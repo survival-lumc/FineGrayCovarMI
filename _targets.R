@@ -134,7 +134,7 @@ simulation_pipeline <- tar_map(
     ) |>
       cbind(prob_space = p),
     reps = 400,
-    batches = 1,
+    batches = 2,
     combine = TRUE
   ),
 
@@ -196,7 +196,7 @@ extra_sims <- tar_rep(
   ) |>
     cbind(prob_space = 0.15),
   reps = 400,
-  batches = 1
+  batches = 2
 )
 
 
