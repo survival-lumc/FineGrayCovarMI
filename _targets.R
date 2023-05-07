@@ -124,7 +124,7 @@ simulation_pipeline <- tar_map(
         )
       ),
       args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-      args_imputations = list(m = 10, iters = 20, rjlimit = 1000),
+      args_imputations = list(m = 20, iters = 20, rjlimit = 1000),
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
         failure_time_model,
@@ -190,7 +190,7 @@ extra_sims <- tar_rep(
       )
     ),
     args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-    args_imputations = list(m = 10, iters = 20, rjlimit = 1000),
+    args_imputations = list(m = 20, iters = 20, rjlimit = 1000),
     args_predictions = list(timepoints = pred_timepoints),
     true_betas = c(1, 1)
   ) |>

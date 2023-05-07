@@ -34,14 +34,19 @@ sim_summ_X <- simsum(
 )
 
 summary(sim_summ_X)
+autoplot(sim_summ_X, type = "nlp", stats = "bias" ) +
+  geom_step(aes(col =  method), size = 3)
+
+
 summ <- data.table(sim_summ_X$summ)
 summ[stat == "bias"][["mcse"]] |> hist(breaks = 20, xlim = c(0, 0.02))
 summ[stat == "empse"][["est"]] |> hist(breaks = 20, xlim  = c(0, 0.2))
 
 df_coefs[term == "X"] |>
-  ggplot(aes(method, estimate - true)) +
+  #ggplot(aes(method, estimate - true)) +
+  ggplot(aes(method, 100 * (estimate - true) / true)) +
   geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.5, shape = 16) +
-  facet_grid(failure_time_model * prob_space ~ censoring_type) +
+  facet_grid(failure_time_model * prob_space ~ censoring_type, scales = "free") +
   theme_bw(base_size = 16) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
@@ -55,9 +60,10 @@ df_coefs[term == "X"] |>
     fun.max = mean,
     geom = "crossbar",
     width = 0.75,
-    aes(col = method)
+    col = "darkred"
   ) +
-  scale_color_manual(values = Manu::get_pal("Hoiho"))
+  scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  coord_cartesian(ylim = c(-25, 25))
 
 # Then Z
 df_coefs[term == "Z"] |>
@@ -80,6 +86,47 @@ df_coefs[term == "Z"] |>
   )
 
 # pspace thing can be edited later..
+tar_load(extras)
+
+df_extras <- rbindlist(
+  with(
+    extras,
+    Map(
+      cbind,
+      method = method,
+      coefs_summary,
+      prob_space = prob_space,
+      failure_time_model = "correct_FG",
+      censoring_type = "none"
+    )
+  )
+)
+
+df_extras[, term := ifelse(grepl(pattern = "^X", term), "X", as.character(term))]
+df_extras
+
+
+df_extras[term == "X"] |>
+  #ggplot(aes(method, estimate - true)) +
+  ggplot(aes(method, estimate)) +
+  geom_jitter(aes(col = method), size = 3, width = 0.25, alpha = 0.75, shape = 16) +
+  #facet_grid(failure_time_model * prob_space ~ censoring_type, scales = "free") +
+  theme_bw(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  ) +
+  geom_hline(aes(yintercept = true), #true),
+             linetype = "dashed", size = 1) +
+  stat_summary(
+    fun = mean,
+    fun.min = mean,
+    fun.max = mean,
+    geom = "crossbar",
+    width = 0.75,
+    col = "darkred"
+  ) +
+  scale_color_manual(values = Manu::get_pal("Hoiho"))
 
 
 # Predictions -------------------------------------------------------------
