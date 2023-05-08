@@ -204,7 +204,7 @@ extra_sims <- tar_rep(
 censoring_sims <- tar_map_rep(
   name = cens_sims,
   combine = TRUE,
-  values = list("cens_rate" = c(0.05, 0.2)),
+  values = data.frame("cens_rate" = c(0.05, 0.2)),
   command = one_replication_cens_known(
     args_event_times = list(
       mechanism = "correct_FG",
