@@ -233,3 +233,86 @@ dat_copy |>
   facet_grid(X_missind ~ D * X) +
   theme_bw(base_size = 14)
 
+
+
+
+# And the new ones!! ------------------------------------------------------
+
+
+invisible(lapply(list.files(here("R"), full.names = TRUE), source))
+
+tar_load(all_simulations)
+tar_load(cens_sims)
+tar_load(simplesurv_sims)
+
+sims_cens_high <- all_simulations[
+  censoring_type %in% c("exponential") &
+    failure_time_model == "correct_FG" &
+    prob_space == 0.15
+]
+sims_cens_high[, cens_rate := 0.5]
+cens_tests <- rbind(sims_cens_high, cens_sims, simplesurv_sims, fill = TRUE)
+rm(all_simulations, cens_sims, simplesurv_sims)
+
+df_coefs_cens <- rbindlist(
+  with(
+    cens_tests,
+    Map(
+      cbind,
+      method = method,
+      coefs_summary,
+      cens_rate = cens_rate
+    )
+  )
+)
+
+df_coefs_cens[, term := ifelse(grepl(pattern = "^X", term), "X", as.character(term))]
+
+# Checks
+df_coefs_cens <- df_coefs_cens[cens_rate != 6]
+#df_coefs_cens[cens_rate != 6][, .(.N), by = c("method", "cens_rate")]
+
+df_coefs_cens[term == "X"] |>
+  #ggplot(aes(method, estimate - true)) +
+  ggplot(aes(method, 100 * (estimate - true) / true)) +
+  geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.5, shape = 16) +
+  facet_grid(. ~ cens_rate, scales = "free") +
+  theme_bw(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  ) +
+  geom_hline(aes(yintercept = 0), #true),
+             linetype = "dashed", size = 1) +
+  stat_summary(
+    fun = mean,
+    fun.min = mean,
+    fun.max = mean,
+    geom = "crossbar",
+    width = 0.75,
+    col = "darkred"
+  ) +
+  #scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  labs(y = "Relative bias (%)")
+#coord_cartesian(ylim = c(-25, 25))
+
+
+df_coefs_cens[, .(
+  bias = mean(100 * (estimate - true) / true)
+), by = c("method", "cens_rate")][, cens_rate := factor(
+  cens_rate, levels = c(0.05, 0.2, 0.5, 1.5),
+  labels = c(0.05, 0.15, 0.3, 0.5)
+)][method %in% c(
+  "smcfcs_finegray",
+  "smcfcs_cox_ev1",
+  "smcfcs_cox_ev2",
+  "smcfcs_comp"
+)] |>
+  ggplot(aes(cens_rate, bias, col = method)) +
+  geom_hline(yintercept = 0, col = "black", size = 2) +
+  geom_line(aes(group = method, linetype = method), size = 2) +
+  geom_point(size = 4) +
+  theme_bw(base_size = 14) +
+  #scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  labs(y = "Relative bias (%)", x = "Proportion censored")# +
+  #coord_cartesian(ylim = c(-10, 5))

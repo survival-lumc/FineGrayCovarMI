@@ -66,33 +66,50 @@ one_replication_nonsense <- function(args_event_times,
   # Method 1: CCA , just for the tidy bit later
   mod_CCA <- model_fun(model_formula, data = dat)
 
-  # Now the nonsense methods: lets make numeric indicators for both competing
-  # events
-  dat[, ':=' (
-    D_ev1 = as.numeric(D == 1),
-    D_ev2 = as.numeric(D == 2)
-  )]
-  #debug(smcfcs:::smcfcs.core)
+  # Let's try some variants of the comp:
+  # - Misspec_smcfcs_comp: same, but only X in imp model
+  # - marginal smcfcs comp: no predictors?
+  # - Cens as extra comp event
+
+  dat[, "EFS_ind" := as.numeric(D != 0)]
 
   # Make a methods vector
   meths_smcfcs <- make.method(dat, defaultMethod = c("norm", "logreg", "mlogit", "podds"))
 
-  # Impute as if Cox just cause 1 (ignoring competing risks)
-  smcfcs_surv_ev1 <- smcfcs(
+  # Smcfcs with even more misspec imp model
+  smcfcs_misspec <- smcfcs(
     originaldata = data.frame(dat),
-    smtype = "coxph",
-    smformula = "Surv(time, D_ev1) ~ X + Z",
+    smtype = "compet",
+    smformula = list(
+      "Surv(time, D == 1) ~ X",
+      "Surv(time, D == 2) ~ X"
+    ),
     method = meths_smcfcs,
     rjlimit = args_imputations$rjlimit,
     numit = args_imputations$iters,
     m = args_imputations$m
   )
 
-  # Impute as if Cox just cause 2 (!!) (ignoring competing risks, and wrong event)
-  smcfcs_surv_ev2 <- smcfcs(
+  # Using the censoring as third competing event
+  smcfcs_model_cens <- smcfcs(
+    originaldata = data.frame(dat),
+    smtype = "compet",
+    smformula = list(
+      "Surv(time, D == 0) ~ X + Z",
+      "Surv(time, D == 1) ~ X + Z",
+      "Surv(time, D == 2) ~ X + Z"
+    ),
+    method = meths_smcfcs,
+    rjlimit = args_imputations$rjlimit,
+    numit = args_imputations$iters,
+    m = args_imputations$m
+  )
+
+  # SMC-FCS with the composite event (to check if it is the EFS that makes the diff)
+  smcfcs_EFS <- smcfcs(
     originaldata = data.frame(dat),
     smtype = "coxph",
-    smformula = "Surv(time, D_ev2) ~ X + Z",
+    smformula = "Surv(time, EFS_ind) ~ X + Z",
     method = meths_smcfcs,
     rjlimit = args_imputations$rjlimit,
     numit = args_imputations$iters,
@@ -104,10 +121,11 @@ one_replication_nonsense <- function(args_event_times,
 
   # Create nested df with imputed datasets
   nested_impdats <- data.table(
-    method = c("smcfcs_cox_ev1", "smcfcs_cox_ev2"),
+    method = c("smcfcs_comp_omitZ", "smcfcs_cens_as_comp", "smcfcs_composite"),
     imp_dats = c(
-      list(smcfcs_surv_ev1$impDatasets),
-      list(smcfcs_surv_ev2$impDatasets)
+      list(smcfcs_misspec$impDatasets),
+      list(smcfcs_model_cens$impDatasets),
+      list(smcfcs_EFS$impDatasets)
     )
   )
 
@@ -131,7 +149,7 @@ one_replication_nonsense <- function(args_event_times,
   ), by = method]
 
   # Remove imputation objects to clear memory
-  rm(smcfcs_surv_ev1, smcfcs_surv_ev2, nested_impdats)
+  rm(smcfcs_EFS, smcfcs_misspec, smcfcs_model_cens, nested_impdats)
 
   # Add summaries of other methods (CCA, and full dataset)
   method_summaries <- summaries_impdats
