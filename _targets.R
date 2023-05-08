@@ -279,8 +279,8 @@ nonsense_sims <- tar_map_rep(
     true_betas = c(0.75, 0.5)
   ) |>
     cbind(prob_space = 0.15),
-  reps = 1, #50, # Let's get this quickkkkk
-  batches = 1#8
+  reps = 50, #50, # Let's get this quickkkkk
+  batches = 8
 )
 
 
