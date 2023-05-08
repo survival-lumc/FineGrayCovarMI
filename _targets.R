@@ -242,6 +242,48 @@ censoring_sims <- tar_map_rep(
 )
 
 
+# Proving a point with nonsense imps
+nonsense_sims <- tar_map_rep(
+  name = simplesurv_sims,
+  combine = TRUE,
+  values = data.frame("cens_rate" = c(0.05, 0.2, 0.5, 1.5)),
+  # rate 1.5 ~ around 50% cens, 6 leads to 75% (still like 100 events left)
+  command = one_replication_nonsense(
+    args_event_times = list(
+      mechanism = "correct_FG",
+      censoring_type = "exponential",
+      params = list(
+        "cause1" = list(
+          "formula" = ~ X + Z,
+          "betas" = c(0.75, 0.5),
+          "p" = 0.15,
+          "base_rate" = 1,
+          "base_shape" = 0.75
+        ),
+        "cause2" = list(
+          "formula" = ~ X + Z,
+          "betas" = c(0.75, 0.5),
+          "base_rate" = 1,
+          "base_shape" = 0.75
+        )
+      ),
+      censoring_params = list(
+        "exponential" = cens_rate, #0.2/0.05
+        "curvy_uniform" = c(0.5, 5),
+        "curvyness" = 0.3
+      )
+    ),
+    args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
+    args_imputations = list(m = 10, iters = 20, rjlimit = 1000), # m = 20
+    args_predictions = list(timepoints = pred_timepoints),
+    true_betas = c(0.75, 0.5)
+  ) |>
+    cbind(prob_space = 0.15),
+  reps = 1, #50, # Let's get this quickkkkk
+  batches = 1#8
+)
+
+
 # Here we bring together all the simulation scenarios
 list(
   extra_settings,
@@ -257,7 +299,8 @@ list(
     command = dplyr::bind_rows(!!!.x)
   ),
   extra_sims,
-  censoring_sims
+  censoring_sims,
+  nonsense_sims
   # Here we pool coefficients and predictions etc.
 )
 
