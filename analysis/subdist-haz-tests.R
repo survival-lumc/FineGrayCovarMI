@@ -13,8 +13,8 @@ args_event_times <- list(
   #mechanism = "correct_FG",
   mechanism = "misspec_FG",
   censoring_type = "exponential",
-  params = tar_read(params_weibull_lfps_0.15)
-  #params = tar_read(true_params_correct_FG_0.15)
+  #params = tar_read(params_weibull_lfps_0.15)
+  params = tar_read(true_params_correct_FG_0.15)
 )
 args_missingness <- list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z"))
 args_imputations <- list(m = 2, iters = 20, rjlimit = 1000)
@@ -76,6 +76,47 @@ ggs_traceplot(obj)
 ggs_running(obj)
 
 
+# Check proportionality ---------------------------------------------------
+
+
+
+args_event_times <- list(
+  mechanism = "correct_FG",
+  #mechanism = "misspec_FG",
+  censoring_type = "exponential",
+  #params = tar_read(params_weibull_lfps_0.15)
+  params = tar_read(true_params_correct_FG_0.15)
+)
+args_missingness <- list(mech_params = list("prob_missing" = 0, "mechanism_expr" = "Z"))
+
+dat <- generate_dataset(
+  n = 100000,
+  args_event_times = args_event_times,
+  args_missingness = args_missingness
+)
+
+coxph(Surv(time, D == 0) ~ X + Z, data = dat)
+cs_mod1 <- coxph(Surv(time, D == 1) ~ X + Z, data = dat)
+cs_mod2 <- coxph(Surv(time, D == 2) ~ X + Z, data = dat)
+coef(cs_mod1)
+coef(cs_mod2)
+par(mfrow = c(2, 2))
+plot(
+  cox.zph(cs_mod1, terms = TRUE, transform = "identity"),
+  col = "blue", lwd = 3, resid = F,
+  ylim = c(-1, 3),
+  xlim = c(0, 5)
+)
+plot(
+  cox.zph(cs_mod2, terms = TRUE, transform = "identity"),
+  col = "blue", lwd = 3, resid = F,
+  ylim = c(-1, 3),
+  xlim = c(0, 5)
+)
+
+
+#plot(cox.zph(cs_mod1, terms = TRUE), col = "blue", lwd = 3, resid = F, ylim = c(-0.5, 3))
+#plot(cox.zph(cs_mod2, terms = TRUE), col = "blue", lwd = 3, resid = F, ylim = c(-0.5, 3))
 
 # Test now plot no censoring scenario -------------------------------------
 

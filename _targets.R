@@ -124,7 +124,7 @@ simulation_pipeline <- tar_map(
         )
       ),
       args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-      args_imputations = list(m = 20, iters = 20, rjlimit = 1000),
+      args_imputations = list(m = 10, iters = 20, rjlimit = 1000), # m= 20
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
         failure_time_model,
@@ -190,13 +190,54 @@ extra_sims <- tar_rep(
       )
     ),
     args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-    args_imputations = list(m = 20, iters = 20, rjlimit = 1000),
+    args_imputations = list(m = 10, iters = 20, rjlimit = 1000), # m = 20
     args_predictions = list(timepoints = pred_timepoints),
     true_betas = c(1, 1)
   ) |>
     cbind(prob_space = 0.15),
   reps = 200,
   batches = 2
+)
+
+
+# Censoring tests
+censoring_sims <- tar_map_rep(
+  name = cens_sims,
+  combine = TRUE,
+  values = list("cens_rate" = c(0.05, 0.2)),
+  command = one_replication_cens_known(
+    args_event_times = list(
+      mechanism = "correct_FG",
+      censoring_type = "exponential",
+      params = list(
+        "cause1" = list(
+          "formula" = ~ X + Z,
+          "betas" = c(0.75, 0.5),
+          "p" = 0.15,
+          "base_rate" = 1,
+          "base_shape" = 0.75
+        ),
+        "cause2" = list(
+          "formula" = ~ X + Z,
+          "betas" = c(0.75, 0.5),
+          "base_rate" = 1,
+          "base_shape" = 0.75
+        )
+      ),
+      censoring_params = list(
+        "exponential" = cens_rate, #0.2/0.05
+        "curvy_uniform" = c(0.5, 5),
+        "curvyness" = 0.3
+      )
+    ),
+    args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
+    args_imputations = list(m = 10, iters = 20, rjlimit = 1000), # m = 20
+    args_predictions = list(timepoints = pred_timepoints),
+    true_betas = c(0.75, 0.5)
+  ) |>
+    cbind(prob_space = 0.15),
+  reps = 50, # Let's get this quickkkkk
+  batches = 8
 )
 
 
@@ -214,7 +255,8 @@ list(
     simulation_pipeline[["true_cuminc"]],
     command = dplyr::bind_rows(!!!.x)
   ),
-  extra_sims
+  extra_sims,
+  censoring_sims
   # Here we pool coefficients and predictions etc.
 )
 
