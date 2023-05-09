@@ -1,3 +1,4 @@
+invisible(lapply(list.files(here("R"), full.names = TRUE), source))
 tar_load(all_simulations)
 
 # Example for multiple
@@ -62,8 +63,8 @@ df_coefs[term == "X"] |>
     width = 0.75,
     col = "darkred"
   ) +
-  scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  coord_cartesian(ylim = c(-25, 25))
+  scale_color_manual(values = Manu::get_pal("Hoiho"))# +
+ # coord_cartesian(ylim = c(-25, 25))
 
 # Then Z
 df_coefs[term == "Z"] |>
@@ -143,7 +144,8 @@ df_preds <- rbindlist(
       prob_space = prob_space,
       failure_time_model = failure_time_model,
       censoring_type = censoring_type,
-      rep_id = tar_rep
+      rep_id = tar_rep,
+      batch_id = tar_batch
     )
   ),
   fill = TRUE
@@ -152,7 +154,8 @@ df_preds[is.na(imp), imp := 0]
 df_preds
 
 tar_load(reference_patients)
-new_pat <- reference_patients[1, ]
+new_pat <- reference_patients[2, ]
+
 new_pat
 rm(all_simulations)
 
@@ -168,11 +171,23 @@ predict_FG <- function(base_cuminc, coefs, new_pat) {
 #rm(df_preds)
 
 # Make predictions for one reference patient
+df_preds[, .(.N), by = c(
+  "method",
+  "rep_id",
+  "batch_id",
+  "time",
+  "imp",
+  "prob_space",
+  "failure_time_model",
+  "censoring_type"
+)]
+
 df_preds[, pred := predict_FG(
   base_cuminc, coefs, as.numeric(new_pat)
 ), by = c(
   "method",
   "rep_id",
+  "batch_id",
   "time",
   "imp",
   "prob_space",
@@ -187,8 +202,8 @@ pooled_preds <- df_preds[, .(
 
 rm(df_preds)
 
-tar_load(all_true_cuminc)
-setDT(all_true_cuminc)
+tar_load(true_cuminc_all)
+setDT(true_cuminc_all)
 pooled_preds
 
 # Now we need to average predictions a la monte carlo
@@ -198,16 +213,33 @@ avg_preds <- pooled_preds[, .(
 
 # Try a tentative merge
 new_pat
-true_sub <- all_true_cuminc[X == 0 & Z == 0]
+true_sub <- true_cuminc_all[X == 1 & Z == 0]
 
 merge(avg_preds, true_sub) |> #[time %in% seq(0, 5, by = 0.5)] |>
-  ggplot(aes(time, avg_pred - cuminc)) +
-  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.5) +
+  ggplot(aes(time, 100 * (avg_pred - cuminc) )) +
+  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
   #geom_line(aes(y = cuminc), col = "black", size = 1.25) +
-  facet_grid(failure_time_model * prob_space  ~ censoring_type, scales = "free") +
+  facet_grid(failure_time_model * prob_space  ~ censoring_type, scales = "fixed") +
   geom_hline(yintercept = 0, linetype = "dashed") +
-  theme_bw(base_size = 16) #+
+  theme_bw(base_size = 16) +
+  scale_color_manual(values = Manu::get_pal("Hoiho"))
  # coord_cartesian(ylim = c(0, 0.5))
+
+# Try calib like plots
+merge(avg_preds, true_sub) |> #[time %in% seq(0, 5, by = 0.5)] |>
+  ggplot(aes(avg_pred, cuminc)) +
+  geom_point(aes(col = method), alpha = 0.8) +
+  geom_abline(intercept = 0, slope = 1) +
+  facet_grid(failure_time_model * prob_space  ~ censoring_type, scales = "fixed") +
+  theme_bw(base_size = 16)
+
+
+  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
+  #geom_line(aes(y = cuminc), col = "black", size = 1.25) +
+  facet_grid(failure_time_model * prob_space  ~ censoring_type, scales = "fixed") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_bw(base_size = 16) +
+  scale_color_manual(values = Manu::get_pal("Hoiho"))
 
 # Let's zoom in one method
 # Compare to CCA!!

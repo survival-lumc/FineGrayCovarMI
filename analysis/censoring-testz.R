@@ -302,12 +302,13 @@ df_coefs_cens[, .(
 ), by = c("method", "cens_rate")][, cens_rate := factor(
   cens_rate, levels = c(0.05, 0.2, 0.5, 1.5),
   labels = c(0.05, 0.15, 0.3, 0.5)
-)][method %in% c(
-  "smcfcs_finegray",
-  "smcfcs_cox_ev1",
-  "smcfcs_cox_ev2",
-  "smcfcs_comp"
 )] |>
+#[method %in% c(
+ # "smcfcs_finegray",
+  #"smcfcs_cox_ev1",
+  #"smcfcs_cox_ev2",
+  #"smcfcs_comp"
+#)] |>
   ggplot(aes(cens_rate, bias, col = method)) +
   geom_hline(yintercept = 0, col = "black", size = 2) +
   geom_line(aes(group = method, linetype = method), size = 2) +
