@@ -134,8 +134,8 @@ generate_covariates <- function(n) {
 args_event_times <- list(
   mechanism = "correct_FG",
   #mechanism = "misspec_FG",
-  #censoring_type = "exponential",
-  censoring_type = "none",
+  censoring_type = "exponential",
+  #censoring_type = "none",
   #params = tar_read(params_weibull_lfps_0.15)
   #params = tar_read(true_params_correct_FG_0.15)
   params = list(
@@ -152,6 +152,11 @@ args_event_times <- list(
       "base_rate" = 1,
       "base_shape" = 0.75
     )
+  ),
+  censoring_params = list(
+    "exponential" = 0.05, #0.2/0.05
+    "curvy_uniform" = c(0.5, 5),
+    "curvyness" = 0.3
   )
 )
 args_missingness <- list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z"))
@@ -251,6 +256,28 @@ dat[, cumhaz_subdist_base_true := cumhaz_subdist(
   b = args_event_times$params$cause1$base_rate,
   p = args_event_times$params$cause1$p
 )]
+
+dat |>
+  ggplot() + #, linetype = factor(Z))) +
+  geom_smooth(
+    aes(x = cumhaz_subdist_base_true, y = X_obs, col = D),
+    linetype = "dotted",
+    method = "gam",
+    se = FALSE,
+    formula = y ~ s(x, bs = "cs"),
+    size = 1.5
+  ) +
+  scale_color_manual(
+    "D",
+   values = Manu::get_pal("Hoiho")#,
+  #labels = c("Censored", "Observed")
+  ) +
+  # guides(lty = guide_legend("Z", override.aes = list(col = "black"))) +
+  labs(x = "Estimated Cumulative subdist baseline hazard at T") +
+  theme_bw(base_size = 14) +
+  coord_cartesian(xlim = c(0, 0.15), ylim = c(-1.5, 0.75))
+
+
 dat[, H1 := compute_marginal_cumhaz(
   timevar = time,
   statusvar = D,

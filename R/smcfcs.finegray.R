@@ -1,4 +1,4 @@
-# Add parameters for MI imps per kmi imp??
+# Add parameters for number of smcfcs imps per kmi imp?
 smcfcs.finegray <- function(originaldata,
                             smformula,
                             method,
@@ -11,9 +11,8 @@ smcfcs.finegray <- function(originaldata,
 
   # Locate/sort out outcome variables
   outcome_vars <- all.vars(update(as.formula(smformula), . ~ 1))
-  time_var_name <- head(outcome_vars, n = 1L) # will need to add warning/error if tstart tstop
+  time_var_name <- head(outcome_vars, n = 1L) # will need to add warning/error if (tstart, tstop) format
   status_var_name <- tail(outcome_vars, n = 1L)
-
   time_var <- originaldata[[time_var_name]]
   status_var <- originaldata[[status_var_name]]
   if (!is.numeric(status_var))
@@ -54,20 +53,20 @@ smcfcs.finegray <- function(originaldata,
       m = m
     )
 
-  } else {
+  } else { # Need to multiply impute censoring times!
 
-    # Prepare kmi() formula (for now default kaplan-meier imputation)
+    # Prepare kmi() formula (for now default Kaplan-Meier imputation)
     lhs_kmi <- paste0("Surv(", paste(outcome_vars, collapse = ", "), " != 0)")
     form_kmi <- reformulate(termlabels = c("1"), response = lhs_kmi)
 
-    # Add option to bootstrap?? See section 5.3.2 Beyersmann book
+    # Add option to bootstrap? See section 5.3.2 Beyersmann book
 
     # Impute missing censoring times in first loop
     kmi_imps <- do.call(
-      kmi,#kmi::kmi,
+      kmi, # We use the local timefixed version (in smcfcs package: edit survfit as globally new fun with timefix = FALSE)
       args = list(
         "formula" = form_kmi,
-        "data" = originaldata, # watch out here later
+        "data" = originaldata,
         "etype" = as.symbol(status_var_name),
         "failcode" = cause,
         "nimp" = m
@@ -87,7 +86,7 @@ smcfcs.finegray <- function(originaldata,
         method = meths_smcfcs,
         rjlimit = rjlimit,
         numit = numit,
-        m = 1L
+        m = 1L # one imputation per kmi dataset
       )
 
       return(smcfcs_modif)

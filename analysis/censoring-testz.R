@@ -92,13 +92,14 @@ df_coefs_cens[, .(
 ), by = c("method", "cens_rate")][, cens_rate := factor(
   cens_rate, levels = c(0, 0.05, 0.2, 0.5, 1.5, 6),
   labels = c(0, 0.05, 0.15, 0.3, 0.5, 0.75)
-)] |>
+)][cens_rate != 0.75] |>
   ggplot(aes(cens_rate, bias, col = method)) +
   geom_hline(yintercept = 0, col = "black", size = 2) +
   geom_line(aes(group = method, linetype = method), size = 2) +
   geom_point(size = 4) +
   theme_bw(base_size = 14) +
-  scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  scale_color_brewer(palette = "Dark2") +
+  #scale_color_manual(values = Manu::get_pal("Hoiho")) +
   labs(y = "Relative bias (%)", x = "Proportion censored") +
   coord_cartesian(ylim = c(-10, 5))
 
@@ -302,18 +303,20 @@ df_coefs_cens[, .(
 ), by = c("method", "cens_rate")][, cens_rate := factor(
   cens_rate, levels = c(0.05, 0.2, 0.5, 1.5),
   labels = c(0.05, 0.15, 0.3, 0.5)
+)][method %in% c(
+  "full",
+  "CCA",
+  "mice_comp",
+  "mice_subdist",
+  "smcfcs_finegray",
+  "smcfcs_comp",
+  "smcfcs_composite"
 )] |>
-#[method %in% c(
- # "smcfcs_finegray",
-  #"smcfcs_cox_ev1",
-  #"smcfcs_cox_ev2",
-  #"smcfcs_comp"
-#)] |>
   ggplot(aes(cens_rate, bias, col = method)) +
   geom_hline(yintercept = 0, col = "black", size = 2) +
   geom_line(aes(group = method, linetype = method), size = 2) +
   geom_point(size = 4) +
   theme_bw(base_size = 14) +
-  #scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  labs(y = "Relative bias (%)", x = "Proportion censored")# +
-  #coord_cartesian(ylim = c(-10, 5))
+  scale_color_brewer(palette = "Dark2") +
+  labs(y = "Relative bias (%)", x = "Proportion censored") +
+  coord_cartesian(ylim = c(-20, 5))

@@ -113,7 +113,7 @@ simulation_pipeline <- tar_map(
       "censoring_type" = censoring_type,
       stringsAsFactors = FALSE
     ),
-    command = one_replication_cens_known( # change!!
+    command = one_replication_cens_known(
       args_event_times = list(
         mechanism = failure_time_model,
         censoring_type = censoring_type,
@@ -157,129 +157,53 @@ simulation_pipeline <- tar_map(
         "Z" = reference_patients$Z,
         "prob_space" = p
       ),
-    # Check against: tidyr::crossing(failure_time_model, tar_read(reference_patients))
+    # Works as tidyr::crossing(failure_time_model, tar_read(reference_patients))
     pattern = cross(reference_patients, failure_time_model_dyn)
   )
 )
 
 
 # Try also 2 extra scenarios with big betas
-# Maybe misspecified + well specified with big betas? And exp censoring?
-# If misspecified - need to also generate big dat..
-# For now: just well specified FG?
-extra_sims <- tar_rep(
-  extras,
-  command = one_replication_cens_known(
-    args_event_times = list(
-      mechanism = "correct_FG",
-      censoring_type = "none",
-      params = list(
-        "cause1" = list(
-          "formula" = ~ X + Z,
-          "betas" = c(1, 1),
-          "p" = 0.15,
-          "base_rate" = 1,
-          "base_shape" = 0.75
-        ),
-        "cause2" = list(
-          "formula" = ~ X + Z,
-          "betas" = c(1, 1),
-          "base_rate" = 1,
-          "base_shape" = 0.75
-        )
-      )
-    ),
-    args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-    args_imputations = list(m = 10, iters = 20, rjlimit = 1000), # m = 20
-    args_predictions = list(timepoints = pred_timepoints),
-    true_betas = c(1, 1)
-  ) |>
-    cbind(prob_space = 0.15),
-  reps = 200,
-  batches = 2
+stress_test <- tar_map_rep(
+  name = big_betas,
+  combine = TRUE,
+  values = data.frame("censoring_type" = c("none", "exponential")),
+  command = rnorm(2),
+  reps = 1,
+  batches = 1
 )
-
 
 # Censoring tests
 censoring_sims <- tar_map_rep(
   name = cens_sims,
   combine = TRUE,
-  values = data.frame("cens_rate" = c(0.05, 0.2, 1.5, 6)),
-  # rate 1.5 ~ around 50% cens, 6 leads to 75% (still like 100 events left)
+  values = expand.grid(
+    "cens_rate" = c(0.2, 1.5),
+    "failure_time_model" = failure_time_model,
+    stringsAsFactors = FALSE
+  ),
   command = one_replication_cens_known(
     args_event_times = list(
-      mechanism = "correct_FG",
+      mechanism = failure_time_model,
       censoring_type = "exponential",
-      params = list(
-        "cause1" = list(
-          "formula" = ~ X + Z,
-          "betas" = c(0.75, 0.5),
-          "p" = 0.15,
-          "base_rate" = 1,
-          "base_shape" = 0.75
-        ),
-        "cause2" = list(
-          "formula" = ~ X + Z,
-          "betas" = c(0.75, 0.5),
-          "base_rate" = 1,
-          "base_shape" = 0.75
-        )
+      params = switch(
+        failure_time_model,
+        "correct_FG" = true_params_correct_FG_0.15,
+        "misspec_FG" = params_weibull_lfps_0.65
       ),
-      censoring_params = list(
-        "exponential" = cens_rate, #0.2/0.05
-        "curvy_uniform" = c(0.5, 5),
-        "curvyness" = 0.3
-      )
+      censoring_params = list("exponential" = cens_rate)
     ),
     args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-    args_imputations = list(m = 10, iters = 20, rjlimit = 1000), # m = 20
+    args_imputations = list(m = 10, iters = 20, rjlimit = 1000),
     args_predictions = list(timepoints = pred_timepoints),
-    true_betas = c(0.75, 0.5)
+    true_betas = switch(
+      failure_time_model,
+      "correct_FG" = true_params_correct_FG_0.15[["cause1"]][["betas"]],
+      "misspec_FG" = params_weibull_lfps_0.65[params_weibull_lfps_0.65[["censoring_type"]] == censoring_type, ][["coefs"]]
+    )
   ) |>
-    cbind(prob_space = 0.15),
-  reps = 50, # Let's get this quickkkkk
-  batches = 8
-)
-
-
-# Proving a point with nonsense imps
-nonsense_sims <- tar_map_rep(
-  name = simplesurv_sims,
-  combine = TRUE,
-  values = data.frame("cens_rate" = c(0.05, 0.2, 0.5, 1.5)),
-  # rate 1.5 ~ around 50% cens, 6 leads to 75% (still like 100 events left)
-  command = one_replication_nonsense(
-    args_event_times = list(
-      mechanism = "correct_FG",
-      censoring_type = "exponential",
-      params = list(
-        "cause1" = list(
-          "formula" = ~ X + Z,
-          "betas" = c(0.75, 0.5),
-          "p" = 0.15,
-          "base_rate" = 1,
-          "base_shape" = 0.75
-        ),
-        "cause2" = list(
-          "formula" = ~ X + Z,
-          "betas" = c(0.75, 0.5),
-          "base_rate" = 1,
-          "base_shape" = 0.75
-        )
-      ),
-      censoring_params = list(
-        "exponential" = cens_rate, #0.2/0.05
-        "curvy_uniform" = c(0.5, 5),
-        "curvyness" = 0.3
-      )
-    ),
-    args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-    args_imputations = list(m = 10, iters = 20, rjlimit = 1000), # m = 20
-    args_predictions = list(timepoints = pred_timepoints),
-    true_betas = c(0.75, 0.5)
-  ) |>
-    cbind(prob_space = 0.15),
-  reps = 50, #50, # Let's get this quickkkkk
+    cbind(prob_space = switch(failure_time_model, "correct_FG" = 0.15, "misspec_FG" = 0.65)),
+  reps = 50,
   batches = 8
 )
 
@@ -298,10 +222,7 @@ list(
     simulation_pipeline[["true_cuminc"]],
     command = dplyr::bind_rows(!!!.x)
   ),
-  extra_sims,
-  censoring_sims,
-  nonsense_sims
-  # Here we pool coefficients and predictions etc.
+  censoring_sims  # Here we pool coefficients and predictions etc.
 )
 
 

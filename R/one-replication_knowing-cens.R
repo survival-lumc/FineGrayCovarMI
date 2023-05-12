@@ -3,6 +3,7 @@ one_replication_cens_known <- function(args_event_times,
                                        args_missingness,
                                        args_imputations,
                                        args_predictions,
+                                       args_covariates = list("X_type" = "binary"),
                                        ...) {
 
   # Simple way to add true betas to summary data.frame at end
@@ -16,7 +17,8 @@ one_replication_cens_known <- function(args_event_times,
   dat <- generate_dataset(
     n = n,
     args_event_times = args_event_times,
-    args_missingness = args_missingness
+    args_missingness = args_missingness,
+    args_covariates = args_covariates
   )
 
   # Add predictors needed for imputation

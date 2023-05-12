@@ -4,9 +4,13 @@ rweibull_KM <- function(n, shape, rate) {
 }
 
 # Generate covariates
-generate_covariates <- function(n) {
+generate_covariates <- function(n, X_type = "binary") {
   dat <- data.table(id = seq_len(n), Z = rnorm(n = n, mean = 0, sd = 1))
-  dat[, X := factor(rbinom(n = n, size = 1L, prob = plogis(Z)))]
+  dat[, X := switch(
+    X_type,
+    "binary" = factor(rbinom(n = n, size = 1L, prob = plogis(Z))),
+    "normal" = rnorm(n = n, mean = 0.5 * Z, sd = 1)
+  )]
   return(dat)
 }
 
@@ -26,7 +30,7 @@ add_event_times <- function(dat,
                               "exponential" = 0.5,
                               "curvy_uniform" = c(0.5, 5),
                               "curvyness" = 0.3
-                            ), # these are fixed hereeee
+                            ),
                             censoring_type = c("none", "exponential", "curvy_uniform")) {
 
   # Match arguments
@@ -53,7 +57,7 @@ add_event_times <- function(dat,
     dat[, D := 1 + rbinom(
       n = .N,
       size = 1L,
-      prob = (1 - params$cause1$p)^exp(x_cause1 %*% params$cause1$betas)
+      prob = (1 - params$cause1$p)^exp(x_cause1 %*% params$cause1$betas) # = P(D = 2 | X, Z)
     )]
 
     # Draw event times conditional on indicator
@@ -71,7 +75,7 @@ add_event_times <- function(dat,
 
   } else if (mechanism == "misspec_FG") {
 
-    # Draw latent times
+    # Draw standard latent times
     time_cause1 <- rweibull_KM(
       n = n,
       shape = params$cause1$base_shape,
@@ -94,15 +98,12 @@ add_event_times <- function(dat,
   # Add censoring
   if (censoring_type %in% c("exponential", "curvy_uniform")) {
 
-    # Relevant only for curvy uniform
-    unif_low <- censoring_params$curvy_uniform[1]
-    unif_upp <- censoring_params$curvy_uniform[2]
-
     # Draw censoring times
     dat[, cens_time := switch(
       censoring_type,
       exponential = rexp(.N, rate = censoring_params$exponential),
-      curvy_uniform = (unif_upp - unif_low) * runif(.N)^(1 / censoring_params$curvyness) + unif_low
+      curvy_uniform = (censoring_params$curvy_uniform[1] - censoring_params$curvy_uniform[2]) *
+        runif(.N)^(1 / censoring_params$curvyness) + censoring_params$curvy_uniform[2]
     )]
 
     dat[cens_time < time, ':=' (D = 0, time = cens_time)]
@@ -122,6 +123,7 @@ add_missingness <- function(dat,
   if (mech_params$prob_missing > 0) {
 
     # Compute part of the linear predictor conditional on covariate
+    #  (mechanism_expr could also be e.g. "0.5 * Z - X" = mix of MAR and MNAR)
     linpred_expr <- parse(text = mech_params$mechanism_expr)
     linpred <- eval(linpred_expr, envir = dat)
 
@@ -139,7 +141,7 @@ add_missingness <- function(dat,
       X_missind = rbinom(n = nrow(dat), size = 1, prob = plogis(intercept_shift + linpred)),
       X_obs = X
     )]
-    dat[X_missind == 1, X := NA_character_] # to be edited if ever X continuous
+    dat[X_missind == 1, X := ifelse(is.numeric(X), NA_real_, NA_character_)]
   }
 
   return(dat)
@@ -183,7 +185,7 @@ compute_marginal_cumhaz <- function(timevar,
   return(hazard[idx, "hazard"])
 }
 
-# Find better way to use this; all code to here was cause number agnostic
+# Find better way to use this; all code up until here was cause number agnostic
 add_cumhaz_to_dat <- function(dat) {
 
   dat[, ':=' (
@@ -214,15 +216,17 @@ add_cumhaz_to_dat <- function(dat) {
 # Wrapper function to generate single dataset
 generate_dataset <- function(n,
                              args_event_times,
-                             args_missingness) {
+                             args_missingness,
+                             args_covariates) {
 
-  dat <- generate_covariates(n = n)
+  dat <- do.call(generate_covariates, args = c(list(n = n), args_covariates))
   do.call(add_event_times, args = c(list(dat = dat), args_event_times))
   do.call(add_missingness, args = c(list(dat = dat), args_missingness))
   return(dat[])
 }
 
-
+# On the large dataset, estimate the least-false parameters to be used as
+# data-generating values is the misspecified FG setting
 recover_weibull_lfps <- function(large_dat,
                                  params_correct_FG) {
 
@@ -261,7 +265,7 @@ recover_weibull_lfps <- function(large_dat,
   return(params)
 }
 
-
+# To determine 'true' (least-false) regression coefficients in the misspecified FG settings
 recover_FG_lps <- function(large_dat,
                            censoring_type,
                            params) {
@@ -274,20 +278,14 @@ recover_FG_lps <- function(large_dat,
     max_ev1_time <- large_dat[D == 1, .(time = max(time))][["time"]]
     eps <- 0.1
     large_dat[D == 2, time := max_ev1_time + eps]
-    mod <- coxph(
-      update(form_rhs, Surv(time, D == 1) ~ .),
-      data = large_dat
-    )
+    mod <- coxph(update(form_rhs, Surv(time, D == 1) ~ .), data = large_dat)
     coefs <- coef(mod)
 
-    # If no censoring, we can make use of the the fact that we know the censoring times
+    # If censoring, we can make use of the the fact that we know the censoring times
     # this saves looaaaads of comp time
   } else {
     large_dat[, "time_star" := ifelse(D == 2, cens_time, time)]
-    mod <- coxph(
-      update(form_rhs, Surv(time_star, D == 1) ~ .),
-      data = large_dat
-    )
+    mod <- coxph(update(form_rhs, Surv(time_star, D == 1) ~ .), data = large_dat)
     coefs <- coef(mod)
   }
 
