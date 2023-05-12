@@ -38,19 +38,19 @@ tidy_tweaked <- function(x, ...) {
 
 pool_tweaked <- function(object, ...) {
 
-  if (!is.list(object))
-    stop("Argument 'object' not a list", call. = FALSE)
+  if (!is.list(object)) stop("Argument 'object' not a list", call. = FALSE)
 
   # Check if first element is FGR - if so, subset crrFit part of each FGR
   if (inherits(object[[1]], "FGR")) object <- lapply(object, "[[", "crrFit")
   mice::pool(object, ...)
 }
 
-# Workhorse function for the simulation
+# One replication of simulation study
 one_replication <- function(args_event_times,
                             args_missingness,
                             args_imputations,
                             args_predictions,
+                            args_covariates = list("X_type" = "binary"),
                             ...) {
 
   # Simple way to add true betas to summary data.frame at end
@@ -64,43 +64,48 @@ one_replication <- function(args_event_times,
   dat <- generate_dataset(
     n = n,
     args_event_times = args_event_times,
-    args_missingness = args_missingness
+    args_missingness = args_missingness,
+    args_covariates = args_covariates
   )
 
   # Add predictors needed for imputation
   add_cumhaz_to_dat(dat)
 
-  # Are censoring times assumed to be known?
-  cens_time_known <- if (args_event_times$censoring_type == "curvy_uniform") TRUE else FALSE
-
-  # If censoring times are known: set competing event times to their censoring time
-  # The marginal cumulative subdistribution hazard is re-estimated based on this
-  # new time variables and D == 1 indicator
-  if (cens_time_known) {
-    # Consistency with kmi names
+  # To speed up computations: assume censoring time to be known when fitting model in each imputed dataset
+  # (we are comparing imputation methods, so this is okay)
+  # - We do so consistently with kmi names
+  if (args_event_times$censoring_type == "none") {
+    max_ev1_time <- dat[D == 1, .(time = max(time))][["time"]]
+    eps <- 0.1
+    dat[, ':=' (
+      newtimes = ifelse(D == 2, max_ev1_time + eps, time),
+      newevent = as.numeric(D == 1)
+    )]
+  } else {
     dat[, ':=' (
       newtimes = ifelse(D == 2, cens_time, time),
-      newevent = D_star
+      newevent = as.numeric(D == 1)
     )]
+  }
+
+  # If the censoring times are assumed to be known in the imputation phase
+  # (curvy_uniform scenarios), we re-estimate subdist cumulative hazard with these
+  cens_time_known <- if (args_event_times$censoring_type == "curvy_uniform") TRUE else FALSE
+
+  if (cens_time_known) {
     dat[, H_subdist_cause1 := compute_marginal_cumhaz(
       timevar = newtimes,
       statusvar = newevent,
       cause = 1,
-      type = "cause_spec"
+      type = "cause_spec" # Since we do not need weights (censoring times known)
     )]
   }
 
-  # Analysis model formula; coxph() is used directly when cens_time_known == TRUE
-  model_formula <- if (cens_time_known) {
-    update(form_rhs, Surv(newtimes, newevent) ~ .)
-  } else update(form_rhs, Hist(time, D) ~ .)
+  # Analysis model formula; coxph() can be used directly
+  model_formula <- update(form_rhs, Surv(newtimes, newevent) ~ .)
 
-  # Make wrapper for function call
-  model_fun <- if (cens_time_known) {
-    function(...) survival::coxph(..., x = TRUE)
-  }  else {
-    function(...) riskRegression::FGR(..., cause = 1)
-  }
+  # Make wrapper for function call, to not set x = TRUE each time (needed for predictCox())
+  model_fun <- function(...) survival::coxph(..., x = TRUE)
 
   # Method 0: Full data before any missing data
   mod_full <- model_fun(update(model_formula, . ~ X_obs + Z), data = dat)
@@ -160,9 +165,9 @@ one_replication <- function(args_event_times,
   # Method 5: SMC-FCS Fine-Gray
   dat[, D := as.numeric(as.character(D))] # Make indicator numeric
 
-  # When censoring times are known, we can use smcfcs() directly
-  # .. with Surv(time_star, D_star) outcome
-  smcfcs_finegray <- if (cens_time_known) {
+  # When censoring times are known for the imputation,
+  # .. we can use smcfcs() directly with Surv(newtimes, newevent)
+  smcfcs_finegray <- if (args_event_times$censoring_type == "curvy_uniform") {
     smcfcs(
       originaldata = data.frame(dat),
       smformula = deparse1(update(form_rhs, Surv(newtimes, newevent) ~ .)),
@@ -173,9 +178,13 @@ one_replication <- function(args_event_times,
       rjlimit = args_imputations$rjlimit
     )
   } else {
-    # In the other case, we use kmi() + smcfcs() combination
+    # In the other case, we use kmi() + smcfcs() combination!
+    df <- data.frame(dat)
+    df <- df[, !(names(df) %in% c("newevent", "newtimes"))] # Avoid issues in subsetting within smcfcs()
+    meths_smcfcs <- make.method(df, defaultMethod = c("norm", "logreg", "mlogit", "podds"))
+
     smcfcs.finegray(
-      originaldata = data.frame(dat),
+      originaldata = df,
       smformula = deparse1(update(form_rhs, Surv(time, D) ~ .)),
       method = meths_smcfcs,
       cause = 1,
@@ -187,18 +196,19 @@ one_replication <- function(args_event_times,
 
   # Create nested df with imputed datasets
   nested_impdats <- data.table(
-    method = c("mice_comp", "mice_subdist", "smcfcs_comp"),
+    method = c("mice_comp", "mice_subdist", "smcfcs_comp", "smcfcs_finegray"),
     imp_dats = c(
       list(complete(mice_comp, action = "all")),
       list(complete(mice_subdist, action = "all")),
-      list(smcfcs_comp$impDatasets)
+      list(smcfcs_comp$impDatasets),
+      list(smcfcs_finegray$impDatasets)
     )
   )
 
-  # Prediction horizons
+  # Prediction horizons read-in
   pred_times <- args_predictions$timepoints
 
-  # Fit models in each imputed dataset; this is time-consuming when model_fun = FGR()
+  # Fit models in each imputed dataset - this is normally the bottleneck when model_fun was FGR()
   nested_impdats[, mods := .(
     list(lapply(imp_dats[[1]], function(imp_dat) model_fun(model_formula, data = imp_dat)))
   ), by = method]
@@ -213,23 +223,6 @@ one_replication <- function(args_event_times,
       )
     )
   ), by = method]
-
-  # We need to do this separately for smcfcs finegray, since we should make
-  # .. use of the imputed censoring times
-  mods_smcfcs_finegray <- lapply(
-    smcfcs_finegray$impDatasets,
-    function(imp) coxph(update(form_rhs, Surv(newtimes, newevent) ~ .), data = imp, x = TRUE)
-  )
-  summaries_smcfcs_finegray <- data.table(
-    "method" = "smcfcs_finegray",
-    "coefs_summary" = list(tidy(pool_tweaked(mods_smcfcs_finegray), conf.int = TRUE)),
-    "preds_summary" = list(
-      rbindlist(
-        lapply(mods_smcfcs_finegray, extract_mod_essentials, timepoints = pred_times),
-        idcol = "imp"
-      )
-    )
-  )
 
   # Remove imputation objects to clear memory
   rm(mice_comp, mice_subdist, smcfcs_finegray, smcfcs_comp, nested_impdats)
@@ -246,8 +239,7 @@ one_replication <- function(args_event_times,
       coefs_summary = list(tidy_tweaked(mod_CCA, conf.int = TRUE)),
       preds_summary = list(extract_mod_essentials(mod_CCA, pred_times))
     ),
-    summaries_impdats,
-    summaries_smcfcs_finegray
+    summaries_impdats
   )
 
   # Keep essential columns (remove MI-specific cols), and bind together with true betas
