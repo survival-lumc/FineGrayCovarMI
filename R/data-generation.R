@@ -4,7 +4,7 @@ rweibull_KM <- function(n, shape, rate) {
 }
 
 # Generate covariates
-generate_covariates <- function(n, X_type = "binary") {
+generate_covariates <- function(n, X_type) {
   dat <- data.table(id = seq_len(n), Z = rnorm(n = n, mean = 0, sd = 1))
   dat[, X := switch(
     X_type,
@@ -217,7 +217,7 @@ add_cumhaz_to_dat <- function(dat) {
 generate_dataset <- function(n,
                              args_event_times,
                              args_missingness,
-                             args_covariates) {
+                             args_covariates = list(X_type = "binary")) {
 
   dat <- do.call(generate_covariates, args = c(list(n = n), args_covariates))
   do.call(add_event_times, args = c(list(dat = dat), args_event_times))

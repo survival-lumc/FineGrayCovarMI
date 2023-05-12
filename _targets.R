@@ -1,9 +1,8 @@
 # Possible to-do/ideas:
-# - record rej sampling warnings if using contin X?
+# - Record rejection sampling warnings if using contin X? Or just very large rjlimit?
 # - Number of imputations per kmi dataset change?
 # - Add proposed smcfcs.finegray to smcfcs() package
-# - Visualise missing mechanism with jitter plots! (visualise the settings, together with
-# base cumincs)
+# - Visualise missing mechanism with jitter plots! (+ visualise the settings, together with base cumincs)
 
 # Workhorse packages
 library("targets")
@@ -30,21 +29,29 @@ prob_space_domin <- c("low_p" = 0.15, "high_p" = 0.65)
 failure_time_model <- c("correct_FG", "misspec_FG")
 censoring_type <- c("none", "exponential", "curvy_uniform")
 
-# Prediction settings
-pred_timepoints <- c(0, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
-extra_settings <- list(
+# We set some of the varying parameters as targets, so we can use dynamic branching later
+dynamic_settings <- list(
   tar_target(reference_patients, expand.grid(X = c(0, 1), Z = c(0, 1))),
-  # We set some of the varying parameters as targets, so we can use dynamic branching later
   tar_target(failure_time_model_dyn, failure_time_model),
   tar_target(censoring_type_dyn, censoring_type)
 )
 
+# Other global settings:
+pred_timepoints <- c(0, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
+num_imputations <- 30
+num_cycles <- 20
+num_replications <- 1 #250 # Higher number of replications now
+num_batches <- 1
+reps_per_batch <- ceiling(num_replications / num_batches)
+size_data_lfps <- 1e6 # size of dataset to estimate least-false parameters
+prop_missing <- 0.4
+
 
 # Here we start the pipeline
-simulation_pipeline <- tar_map(
+simulation_pipeline_main <- tar_map(
   unlist = FALSE,
-  values = list("p" = prob_space_domin),
   # We iterate over the values of p
+  values = list("p" = prob_space_domin),
   tar_target(
     true_params_correct_FG,
     list(
@@ -68,7 +75,7 @@ simulation_pipeline <- tar_map(
   tar_target(
     largedat_correct_FG,
     generate_dataset(
-      n = 1e6,
+      n = size_data_lfps,
       args_event_times = list(
         mechanism = "correct_FG",
         params = true_params_correct_FG,
@@ -85,7 +92,6 @@ simulation_pipeline <- tar_map(
       params_correct_FG = true_params_correct_FG
     )
   ),
-
   # FG least-false parameters depend on censoring - recover them
   tar_target(
     weibull_FG_lfps,
@@ -93,7 +99,7 @@ simulation_pipeline <- tar_map(
       censoring_type = censoring_type_dyn,
       params = params_weibull_lfps,
       large_dat = generate_dataset(
-        n = 1e6,
+        n = size_data_lfps,
         args_event_times = list(
           mechanism = "misspec_FG",
           params = params_weibull_lfps,
@@ -105,7 +111,7 @@ simulation_pipeline <- tar_map(
     pattern = map(censoring_type_dyn)
   ),
 
-  # This are the actual simulation replications, iterate over the remaining scenario parameters
+  # These are the actual core simulation replications, iterate over the remaining scenario parameters
   tar_map_rep(
     name = simreps,
     values = expand.grid(
@@ -113,7 +119,7 @@ simulation_pipeline <- tar_map(
       "censoring_type" = censoring_type,
       stringsAsFactors = FALSE
     ),
-    command = one_replication_cens_known(
+    command = one_replication(
       args_event_times = list(
         mechanism = failure_time_model,
         censoring_type = censoring_type,
@@ -123,8 +129,8 @@ simulation_pipeline <- tar_map(
           "misspec_FG" = params_weibull_lfps
         )
       ),
-      args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-      args_imputations = list(m = 10, iters = 20, rjlimit = 1000), # m= 20
+      args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "Z")),
+      args_imputations = list(m = num_imputations, iters = num_cycles, rjlimit = 1000),
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
         failure_time_model,
@@ -133,15 +139,15 @@ simulation_pipeline <- tar_map(
       )
     ) |>
       cbind(prob_space = p),
-    reps = 200, # number of reps is reps * batches
-    batches = 2,
+    reps = reps_per_batch, # Total number of replications = reps * batches
+    batches = num_batches,
     combine = TRUE
   ),
 
   # Calculate true cumulative incidences for all reference patients
   tar_target(
     true_cuminc,
-    compute_true_cuminc(
+    compute_true_cuminc( # Replace with newer function later (!)
       t = pred_timepoints,
       newdat = cbind.data.frame(X = reference_patients$X, Z = reference_patients$Z),
       params = switch(
@@ -157,78 +163,139 @@ simulation_pipeline <- tar_map(
         "Z" = reference_patients$Z,
         "prob_space" = p
       ),
-    # Works as tidyr::crossing(failure_time_model, tar_read(reference_patients))
+    # Works just like tidyr::crossing(failure_time_model, tar_read(reference_patients))
     pattern = cross(reference_patients, failure_time_model_dyn)
   )
 )
 
 
-# Try also 2 extra scenarios with big betas
+# We vary the censoring rate further for a subset of scenarios
+# (since performance of misspecified imp model could depend on censoring)
+# leads to approx 15% an 50% censored (so we have 0, 0.15, 0.3, and 0.5 as prop censored overall)
+extra_cens_rates <- c(0.25, 1.5)
+
+simulations_censoring <- tar_map(
+  values = list("cens_rate" = extra_cens_rates),
+  unlist = FALSE,
+  tar_target(
+    weibull_FG_lfps_extracens,
+    recover_FG_lps(
+      censoring_type = "exponential",
+      params = params_weibull_lfps_0.65,
+      large_dat = generate_dataset(
+        n = size_data_lfps,
+        args_event_times = list(
+          mechanism = "misspec_FG",
+          params = params_weibull_lfps_0.65,
+          censoring_type = "exponential",
+          censoring_params = list("exponential" = cens_rate)
+        ),
+        args_missingness = list(mech_params = list("prob_missing" = 0))
+      )
+    )$coefs
+  ),
+
+  # Now the extra sims
+  tar_map_rep(
+    name = simreps_cens,
+    combine = TRUE,
+    values = data.frame("failure_time_model" = failure_time_model),
+    command = one_replication(
+      args_event_times = list(
+        mechanism = failure_time_model,
+        censoring_type = "exponential",
+        params = switch(
+          failure_time_model,
+          "correct_FG" = true_params_correct_FG_0.15,
+          "misspec_FG" = params_weibull_lfps_0.65
+        ),
+        censoring_params = list("exponential" = cens_rate)
+      ),
+      args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "Z")),
+      args_imputations = list(m = num_imputations, iters = num_cycles, rjlimit = 1000),
+      args_predictions = list(timepoints = pred_timepoints),
+      true_betas = switch(
+        failure_time_model,
+        "correct_FG" = true_params_correct_FG_0.15[["cause1"]][["betas"]],
+        "misspec_FG" = weibull_FG_lfps_extracens
+      )
+    ) |>
+      cbind(
+        prob_space = switch(failure_time_model, "correct_FG" = 0.15, "misspec_FG" = 0.65),
+        cens_rate = cens_rate
+      ),
+    reps = reps_per_batch,
+    batches = num_batches
+  )
+)
+
+
+# Try also two extra scenarios with big betas and continuous X, to prove a point..
+# MCSE will be much smaller, so we can do probs half the reps
 stress_test <- tar_map_rep(
   name = big_betas,
   combine = TRUE,
   values = data.frame("censoring_type" = c("none", "exponential")),
-  command = rnorm(2),
-  reps = 1,
-  batches = 1
-)
-
-# Censoring tests
-censoring_sims <- tar_map_rep(
-  name = cens_sims,
-  combine = TRUE,
-  values = expand.grid(
-    "cens_rate" = c(0.2, 1.5),
-    "failure_time_model" = failure_time_model,
-    stringsAsFactors = FALSE
-  ),
-  command = one_replication_cens_known(
+  command = one_replication(
     args_event_times = list(
-      mechanism = failure_time_model,
-      censoring_type = "exponential",
-      params = switch(
-        failure_time_model,
-        "correct_FG" = true_params_correct_FG_0.15,
-        "misspec_FG" = params_weibull_lfps_0.65
-      ),
-      censoring_params = list("exponential" = cens_rate)
+      mechanism = "correct_FG",
+      censoring_type = censoring_type,
+      params = list(
+        "cause1" = list(
+          "formula" = ~ X + Z,
+          "betas" = c(1, 1),
+          "p" = 0.65,
+          "base_rate" = 1,
+          "base_shape" = 0.75
+        ),
+        "cause2" = list(
+          "formula" = ~ X + Z,
+          "betas" = c(1, 1),
+          "base_rate" = 1,
+          "base_shape" = 0.75
+        )
+      )
     ),
-    args_missingness = list(mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "Z")),
-    args_imputations = list(m = 10, iters = 20, rjlimit = 1000),
+    args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "Z")),
+    args_imputations = list(m = num_imputations, iters = num_cycles, rjlimit = 10000),
     args_predictions = list(timepoints = pred_timepoints),
-    true_betas = switch(
-      failure_time_model,
-      "correct_FG" = true_params_correct_FG_0.15[["cause1"]][["betas"]],
-      "misspec_FG" = params_weibull_lfps_0.65[params_weibull_lfps_0.65[["censoring_type"]] == censoring_type, ][["coefs"]]
-    )
+    args_covariates = list("X_type" = "normal"),
+    true_betas = c(1, 1)
   ) |>
-    cbind(prob_space = switch(failure_time_model, "correct_FG" = 0.15, "misspec_FG" = 0.65)),
-  reps = 50,
-  batches = 8
+    cbind(prob_space = 0.65),
+  reps = reps_per_batch,
+  batches = num_batches
 )
 
 
 # Here we bring together all the simulation scenarios
 list(
-  extra_settings,
-  simulation_pipeline,
+  dynamic_settings,
+  simulation_pipeline_main,
+  simulations_censoring,
   tar_combine(
-    all_simulations,
-    simulation_pipeline[["simreps"]],
+    simulations_main,
+    simulation_pipeline_main[["simreps"]],
     command = dplyr::bind_rows(!!!.x)
   ),
   tar_combine(
     true_cuminc_all,
-    simulation_pipeline[["true_cuminc"]],
+    simulation_pipeline_main[["true_cuminc"]],
     command = dplyr::bind_rows(!!!.x)
   ),
-  censoring_sims  # Here we pool coefficients and predictions etc.
+  tar_combine(
+    simulations_cens,
+    simulations_censoring[["simreps_cens"]],
+    command = dplyr::bind_rows(!!!.x)
+  ),
+  stress_test
+  # Here we pool coefficients and predictions etc.
+  # Predictions only for exponential cens and no cens?? Since no
+  # .. difference between admin and exponential cens?
 )
 
 
 # tar_read(extras) # run this one??
-
-
 # Check tar meta and object sizes
 # Might need to add least-false true onto the dataframe
 # Calculate empirical SEs of absolute risk predictions
