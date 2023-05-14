@@ -40,7 +40,7 @@ dynamic_settings <- list(
 pred_timepoints <- c(0, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
 num_imputations <- 30
 num_cycles <- 20
-num_replications <- 1 #250 # Higher number of replications now
+num_replications <- 500 # Higher number of replications now
 num_batches <- 1
 reps_per_batch <- ceiling(num_replications / num_batches)
 size_data_lfps <- 1e6 # size of dataset to estimate least-false parameters
@@ -263,8 +263,8 @@ stress_test <- tar_map_rep(
     true_betas = c(1, 1)
   ) |>
     cbind(prob_space = 0.65),
-  reps = reps_per_batch,
-  batches = num_batches
+  reps = 25, # 100 test replications
+  batches = 4
 )
 
 
