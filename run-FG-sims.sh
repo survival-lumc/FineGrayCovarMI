@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
 #SBATCH --partition=all
-#SBATCH --time=0-12:00:00
+#SBATCH --time=0-23:00:00
 #SBATCH --mem-per-cpu=10G
 
 
