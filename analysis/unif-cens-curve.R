@@ -42,3 +42,12 @@ hist(cens_times, breaks = 50, freq = FALSE)
 
 # Hurray!
 #table(cens_times)
+
+
+# To possibly add below ---------------------------------------------------
+
+
+# - Plot of estimated (with cox.zph) time-dep effect when using cause-specific model
+# - Checking proportion censored more systematically
+# - Conditional distribution X given subdist, D, etc.
+# - Show good convergence of smcfcs.finegray

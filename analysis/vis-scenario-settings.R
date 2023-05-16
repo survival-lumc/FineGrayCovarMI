@@ -3,10 +3,7 @@ library(tidyverse)
 library(patchwork)
 
 # Timepoints
-times <- c(
-  seq(0.001, 2.5, length.out = 40),
-  seq(2.6, 10, length.out = 10)
-)
+times <- c(seq(0.001, 2.5, length.out = 40),seq(2.6, 10, length.out = 10))
 combs <- tidyr::crossing(
   mechanism = c("correct_FG", "misspec_FG"),
   p = c(0.15, 0.65)

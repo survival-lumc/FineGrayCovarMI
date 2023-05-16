@@ -49,9 +49,27 @@ coefs_main <- rbindlist(
   )
 )
 
+# Let's already read-in the censoring ones
+coefs_cens <- rbindlist(
+  with(
+    tar_read(simulations_cens),
+    Map(
+      cbind,
+      method = method,
+      coefs_summary,
+      prob_space = prob_space,
+      failure_time_model = failure_time_model,
+      censoring_type = "exponential",
+      cens_rate = cens_rate
+    )
+  )
+)
+
+coefs_all <- rbind(coefs_cens, coefs_main, fill = TRUE)
+
 # Do some cleaning
-coefs_main[, term := ifelse(grepl(pattern = "^X", term), "X", as.character(term))]
-coefs_main[, method := factor(
+coefs_all[, term := ifelse(grepl(pattern = "^X", term), "X", as.character(term))]
+coefs_all[, method := factor(
   method,
   levels = c("full", "CCA", "mice_comp", "mice_subdist", "smcfcs_comp", "smcfcs_finegray"),
   labels = c(
@@ -63,13 +81,15 @@ coefs_main[, method := factor(
     "SMC-FCS Fine-Gray"
   )
 )]
-coefs_main[, censoring_type := factor(
+coefs_all[, censoring_type := factor(
   censoring_type,
   levels = c("none", "exponential", "curvy_uniform")
 )]
+coefs_all[is.na(cens_rate) & censoring_type == "exponential", cens_rate := 0.5]
+coefs_all[censoring_type == "none", cens_rate := 0]
 
 
-coefs_main[term == "X"] |>
+coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5))] |>
   ggplot(aes(method, estimate - true)) +
   geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
   facet_grid(
@@ -96,7 +116,7 @@ coefs_main[term == "X"] |>
 
 # Coverage
 sim_summ_X <- simsum(
-  data = coefs_main[term == "X"],
+  data = coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5))],
   estvarname = "estimate",
   se = "std.error",
   true = "true",
@@ -139,7 +159,7 @@ data.table(sim_summ_X$summ)[stat == "cover"] |>
   labs(y = "Coverage (95% CI with MCSE)")
 
 
-coefs_main[term == "X", .(
+coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5)), .(
   rmse = sqrt(mean((estimate - true)^2)),
   rmse_mcse = rmse_mcse(estimate, true, .N)
 ), by = c("failure_time_model", "method", "prob_space", "censoring_type")] |>
@@ -173,7 +193,7 @@ coefs_main[term == "X", .(
 
 
 # Model standard errors?
-coefs_main[term == "X"] |>
+coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5))] |>
   ggplot(aes(method, std.error)) +
   geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
   facet_grid(
@@ -196,6 +216,35 @@ coefs_main[term == "X"] |>
   ) +
   scale_color_manual(values = Manu::get_pal("Hoiho")) +
   labs(y = "Model-based standard error X\n(pooled in MI cases)", y = "Bias")
+
+
+
+# Investigating censoring -------------------------------------------------
+
+
+df_cens_plot <- copy(coefs_all[!is.na(cens_rate)])[
+  (failure_time_model == "correct_FG" & prob_space == 0.15) |
+    (failure_time_model == "misspec_FG" & prob_space == 0.65)
+]
+df_cens_plot[, cens_rate := factor(
+  cens_rate,
+  levels = c(0, 0.25, 0.5, 1.5),
+  labels = c(0, 0.15, 0.3, 0.5)
+)]
+
+df_cens_plot[, .(bias = mean(estimate - true), .N), by = c(
+  "method",
+  "cens_rate",
+  "failure_time_model",
+  "term"
+)] |>
+  ggplot(aes(cens_rate, bias, group = method, col = method)) +
+  geom_point(size = 3) +
+  geom_hline(aes(yintercept = 0), linetype = "dashed", size = 1) +
+  geom_line(aes(linetype = method), size = 1.5) +
+  facet_grid(failure_time_model ~ term) +
+  scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  labs(x = "Proportion censored", y = "Bias")
 
 
 # Results Z ---------------------------------------------------------------
@@ -388,3 +437,24 @@ coefs_stress |>
   ) +
   scale_color_manual(values = Manu::get_pal("Hoiho")) +
   labs(x = "Method", y = "Bias")
+
+# readRDS("data-raw/sims_cens.rds")
+# ggsave("interim-sims.png", dpi = 300, units = "in", width = 9, height = 6)
+
+
+# Horrible zipper plot ----------------------------------------------------
+
+
+
+# Shocking attempt at zipper plot
+df_coefs[method == "Full data" &
+           term == "X" &
+           failure_time_model == "correct_FG" &
+           prob_space == 0.15 &
+           censoring_type == "none", ] |>
+  ggplot(aes(estimate - true,
+             #cumsum(
+             rank(abs((estimate - true) / std.error))
+             #  sum(rank(abs((estimate - true) / std.error)))
+  )) +
+  geom_linerange(aes(xmin = conf.low - true, xmax = conf.high - true))
