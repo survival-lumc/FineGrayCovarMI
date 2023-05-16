@@ -1,7 +1,3 @@
-predict_nested_FG <- function(base_cuminc, coefs, new_pat) {
-  1 - (1 - base_cuminc)^exp(unlist(coefs) %*% new_pat)
-}
-
 # Later extent properly with the (...),for now keep it simple
 pool_nested_predictions <- function(nested_df,
                                     new_pat, # should be numeric!
@@ -28,6 +24,11 @@ pool_nested_predictions <- function(nested_df,
 
   # Give full and CCA methods a 'zero' id for the imputation
   unnested_df[is.na(imp), imp := 0]
+
+  # To make prediction
+  predict_nested_FG <- function(base_cuminc, coefs, new_pat) {
+    1 - (1 - base_cuminc)^exp(unlist(coefs) %*% new_pat)
+  }
 
   # Predict for a given patient
   unnested_df[, pred := predict_nested_FG(base_cuminc, coefs, new_pat), by = c(

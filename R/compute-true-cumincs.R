@@ -66,10 +66,10 @@ compute_true <- function(t,
     # Calculate all hazards
     haz_cs1 <- weibull_hazard(t, x_cause1, params[["cause1"]], type = "hazard")
     haz_cs2 <- weibull_hazard(t, x_cause2, params[["cause2"]], type = "hazard")
-    cumhaz_cs1 <- weibull_hazard(t, x_cause1, params[["cause1"]], type = "cumulative")
-    cumhaz_cs2 <- weibull_hazard(t, x_cause2, params[["cause2"]], type = "cumulative")
+    #cumhaz_cs1 <- weibull_hazard(t, x_cause1, params[["cause1"]], type = "cumulative")
+    #cumhaz_cs2 <- weibull_hazard(t, x_cause2, params[["cause2"]], type = "cumulative")
     haz_subdist1 <- get_subdisthaz_misspec(t)
-    cumhaz_subdist1 <- integrate_to_t(fun = get_subdisthaz_misspec, t = t)
+    #cumhaz_subdist1 <- integrate_to_t(fun = get_subdisthaz_misspec, t = t)
 
   } else if (model_type == "correct_FG") {
 
@@ -108,11 +108,11 @@ compute_true <- function(t,
     }
 
     haz_subdist1 <- get_subdisthaz_correct(t)
-    cumhaz_subdist1 <- integrate_to_t(fun = get_subdisthaz_correct, t = t)
+    #cumhaz_subdist1 <- integrate_to_t(fun = get_subdisthaz_correct, t = t)
     haz_cs1 <- get_cshaz_correct(t, cause = 1)
     haz_cs2 <- get_cshaz_correct(t, cause = 2)
-    cumhaz_cs1 <- integrate_to_t(fun = get_cshaz_correct, t = t, cause = 1)
-    cumhaz_cs2 <- integrate_to_t(fun = get_cshaz_correct, t = t, cause = 2)
+    #cumhaz_cs1 <- integrate_to_t(fun = get_cshaz_correct, t = t, cause = 1)
+    #cumhaz_cs2 <- integrate_to_t(fun = get_cshaz_correct, t = t, cause = 2)
   }
 
   # Sort out what to return now
@@ -122,14 +122,14 @@ compute_true <- function(t,
     "cuminc_2" = F2,
     haz_subdist1,
     haz_cs1,
-    haz_cs2,
-    cumhaz_subdist1,
-    cumhaz_cs1,
-    cumhaz_cs2
+    haz_cs2#,
+    #cumhaz_subdist1,
+    #cumhaz_cs1,
+    #cumhaz_cs2
   )
 }
 
-
+#
 compute_true_cuminc <- function(t,
                                 newdat,
                                 params,

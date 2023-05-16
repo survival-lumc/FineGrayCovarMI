@@ -1,7 +1,5 @@
 # Possible to-do/ideas:
-# - Record rejection sampling warnings if using contin X? Or just very large rjlimit?
-# - Number of imputations per kmi dataset change?
-# - Add proposed smcfcs.finegray to smcfcs() package
+# - Add proposed smcfcs.finegray to smcfcs() package; add options to kmi settings?
 # - Visualise missing mechanism with jitter plots! (+ visualise the settings, together with base cumincs)
 
 # Workhorse packages
@@ -15,9 +13,9 @@ library("here")
 source(here("packages.R"))
 invisible(lapply(list.files(here("R"), full.names = TRUE), source))
 
-# (MAKE INTO TARGETS MARKDOWN!)
+# (MAKE INTO TARGETS MARKDOWN?)
 
-# To run pipeline in parallel..
+# To run pipeline in parallel
 plan(callr)
 
 # For debugging:
@@ -40,7 +38,7 @@ dynamic_settings <- list(
 pred_timepoints <- c(0, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
 num_imputations <- 30
 num_cycles <- 20
-num_replications <- 500 # Higher number of replications now
+num_replications <- 500
 num_batches <- 1
 reps_per_batch <- ceiling(num_replications / num_batches)
 size_data_lfps <- 1e6 # size of dataset to estimate least-false parameters
@@ -71,7 +69,7 @@ simulation_pipeline_main <- tar_map(
     )
   ),
   # Generate large dataset (which we keep as a target so that we can show
-  # non-param cumincs)
+  # non-param cumincs later)
   tar_target(
     largedat_correct_FG,
     generate_dataset(
@@ -172,11 +170,14 @@ simulation_pipeline_main <- tar_map(
 # We vary the censoring rate further for a subset of scenarios
 # (since performance of misspecified imp model could depend on censoring)
 # leads to approx 15% an 50% censored (so we have 0, 0.15, 0.3, and 0.5 as prop censored overall)
-extra_cens_rates <- c(0.25, 1.5)
+extra_cens_rates <- c(0.17, 1.44)
 
 simulations_censoring <- tar_map(
   values = list("cens_rate" = extra_cens_rates),
   unlist = FALSE,
+
+  # Same story with the least-false parameters depending on censoring,
+  # although here it will not matter so much since p = 0.65
   tar_target(
     weibull_FG_lfps_extracens,
     recover_FG_lps(
@@ -195,7 +196,10 @@ simulations_censoring <- tar_map(
     )$coefs
   ),
 
-  # Now the extra sims
+  # Now run the extra replications for two scenarios, since that is where
+  # difference were most pronounce in the original replications..
+  # - p = 0.15, correct_FG
+  # - p = 0.65, misspec_FH
   tar_map_rep(
     name = simreps_cens,
     combine = TRUE,
@@ -222,7 +226,8 @@ simulations_censoring <- tar_map(
     ) |>
       cbind(
         prob_space = switch(failure_time_model, "correct_FG" = 0.15, "misspec_FG" = 0.65),
-        cens_rate = cens_rate
+        cens_rate = cens_rate,
+        censoring_type = "exponential"
       ),
     reps = reps_per_batch,
     batches = num_batches
@@ -230,16 +235,19 @@ simulations_censoring <- tar_map(
 )
 
 
-# Try also two extra scenarios with big betas and continuous X, to prove a point..
-# MCSE will be much smaller, so we can do probs half the reps
+# Additional scenarios with large covariate effects, large p; to showcase
+# largest differences between smcfcs and mice. To check: use pred mean matching here?
+
+# MCSE will be much smaller, so we can do probably do just half the reps
 stress_test <- tar_map_rep(
   name = big_betas,
   combine = TRUE,
-  values = data.frame("censoring_type" = c("none", "exponential")),
+  values = data.frame("censoring_type" = c("none", "exponential")), # for both no, and exponential censoring
   command = one_replication(
     args_event_times = list(
       mechanism = "correct_FG",
       censoring_type = censoring_type,
+      censoring_params = list("exponential" = 0.25), # to get 30% cens
       params = list(
         "cause1" = list(
           "formula" = ~ X + Z,
@@ -257,12 +265,15 @@ stress_test <- tar_map_rep(
       )
     ),
     args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "Z")),
-    args_imputations = list(m = num_imputations, iters = num_cycles, rjlimit = 10000),
+    args_imputations = list(m = num_imputations, iters = num_cycles, rjlimit = 10000), # Large rjlimit to avoid warnings
     args_predictions = list(timepoints = pred_timepoints),
     args_covariates = list("X_type" = "normal"),
     true_betas = c(1, 1)
   ) |>
-    cbind(prob_space = 0.65),
+    cbind(
+      prob_space = 0.65,
+      failure_time_model = "correct_FG"
+    ),
   reps = 25, # 100 test replications
   batches = 4
 )
@@ -289,11 +300,9 @@ list(
     command = dplyr::bind_rows(!!!.x)
   ),
   stress_test,
-  # Here we pool coefficients and predictions etc.
-  # Predictions only for exponential cens and no cens?? Since no
-  # .. difference between admin and exponential cens?
+  # In reporting: forget about admin cens; just mention in-text
 
-  # Pool predictions just for main simulations? Probs also for big_betas later
+  # Pool predictions just for main simulations?
   tar_target(
     pooled_preds_main,
     pool_nested_predictions(
@@ -308,8 +317,5 @@ list(
   )
 )
 
-
-# tar_read(extras) # run this one??
-# Check tar meta and object sizes
-# Might need to add least-false true onto the dataframe
-# Calculate empirical SEs of absolute risk predictions
+# To-do:
+# - Calculate empirical SEs of absolute risk predictions

@@ -101,7 +101,7 @@ coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5))] |>
     axis.text.x = element_text(angle = 45, hjust = 1),
     legend.position = "none"
   ) +
-  geom_hline(aes(yintercept = 0), linetype = "dashed", size = 1) +
+  geom_hline(aes(yintercept = 0), linetype = "dashed", linewidth = 1) +
   stat_summary(
     fun = mean,
     fun.min = mean,
@@ -192,7 +192,7 @@ coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5)), .(
   labs(y = "RMSE (95% CI with MCSE)", x = "Method")
 
 
-# Model standard errors?
+# Model standard errors? This should look better in a bit..
 coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5))] |>
   ggplot(aes(method, std.error)) +
   geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
@@ -415,7 +415,7 @@ coefs_stress[, censoring_type := factor(
 
 # Use pmm instead?
 coefs_stress |>
-  ggplot(aes(method, estimate - true)) +
+  ggplot(aes(method, estimate)) +
   geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.5, shape = 16) +
   facet_grid(
     term ~ censoring_type,
@@ -426,7 +426,7 @@ coefs_stress |>
     axis.text.x = element_text(angle = 45, hjust = 1),
     legend.position = "none"
   ) +
-  geom_hline(aes(yintercept = 0), linetype = "dashed", size = 1) +
+  geom_hline(aes(yintercept = true), linetype = "dashed", size = 1) +
   stat_summary(
     fun = mean,
     fun.min = mean,

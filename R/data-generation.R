@@ -27,9 +27,9 @@ add_event_times <- function(dat,
                             mechanism = c("correct_FG", "misspec_FG"),
                             params,
                             censoring_params = list(
-                              "exponential" = 0.5,
+                              "exponential" = 0.49,
                               "curvy_uniform" = c(0.5, 5),
-                              "curvyness" = 0.3
+                              "curvyness" = 0.29
                             ),
                             censoring_type = c("none", "exponential", "curvy_uniform")) {
 

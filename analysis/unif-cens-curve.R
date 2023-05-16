@@ -51,3 +51,10 @@ hist(cens_times, breaks = 50, freq = FALSE)
 # - Checking proportion censored more systematically
 # - Conditional distribution X given subdist, D, etc.
 # - Show good convergence of smcfcs.finegray
+
+
+# Based on 3 million obs
+# 15% censored with exp rate = 0.17
+# 30% censored with exp rate = 0.49
+# 50% censored with exp rate = 1.44
+# Curvyness = 0.29 is around 30% cens in admin cens scenario
