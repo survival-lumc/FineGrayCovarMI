@@ -288,10 +288,24 @@ list(
     simulations_censoring[["simreps_cens"]],
     command = dplyr::bind_rows(!!!.x)
   ),
-  stress_test
+  stress_test,
   # Here we pool coefficients and predictions etc.
   # Predictions only for exponential cens and no cens?? Since no
   # .. difference between admin and exponential cens?
+
+  # Pool predictions just for main simulations? Probs also for big_betas later
+  tar_target(
+    pooled_preds_main,
+    pool_nested_predictions(
+      nested_df = simulations_main,
+      new_pat = c(X = reference_patients$X, Z = reference_patients$Z)
+    ) |>
+      cbind(
+        "X" = reference_patients$X,
+        "Z" = reference_patients$Z
+      ),
+    pattern = map(reference_patients)
+  )
 )
 
 

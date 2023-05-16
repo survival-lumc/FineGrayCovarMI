@@ -1,4 +1,5 @@
 # For meeting 3/May/2023
+invisible(lapply(list.files(here("R"), full.names = TRUE), source))
 
 dat <- generate_dataset(
   n = 1e3,
@@ -40,3 +41,4 @@ cens_times <- 4.5 * runif(1e4)^(1 / curvyness) + 0.5
 hist(cens_times, breaks = 50, freq = FALSE)
 
 # Hurray!
+#table(cens_times)

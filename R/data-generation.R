@@ -102,7 +102,7 @@ add_event_times <- function(dat,
     dat[, cens_time := switch(
       censoring_type,
       exponential = rexp(.N, rate = censoring_params$exponential),
-      curvy_uniform = (censoring_params$curvy_uniform[1] - censoring_params$curvy_uniform[2]) *
+      curvy_uniform = (censoring_params$curvy_uniform[2] - censoring_params$curvy_uniform[1]) *
         runif(.N)^(1 / censoring_params$curvyness) + censoring_params$curvy_uniform[2]
     )]
 
