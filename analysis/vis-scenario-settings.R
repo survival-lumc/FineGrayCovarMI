@@ -1,12 +1,29 @@
 source("R/compute-true-cumincs.R")
 library(tidyverse)
 library(patchwork)
+library(extrafont)
+library(Manu)
+
+theme_set(
+  theme_light(base_size = 16, base_family = "Roboto Condensed") +
+    theme(
+      strip.background = element_rect(fill = Manu::get_pal("Hoiho")[[2]], colour = "white"),
+      strip.text = element_text(colour = 'white')
+    )
+)
 
 # Timepoints
 times <- c(seq(0.001, 2.5, length.out = 40),seq(2.6, 10, length.out = 10))
 combs <- tidyr::crossing(
   mechanism = c("correct_FG", "misspec_FG"),
   p = c(0.15, 0.65)
+)
+
+pspace_labels <- c("0.15" = "p = 0.15", "0.65" = "p = 0.65")
+failure_model_labels <- c("correct_FG" = "Well specified FG", "misspec_FG" = "Misspecified FG")
+all_labels <- labeller(
+  p = pspace_labels,
+  mech = failure_model_labels
 )
 
 hazs <- map2(
@@ -81,11 +98,20 @@ p1 <- rbindlist(hazs) |>
     aes(group = hazard_type, col = hazard_type, linetype = hazard_type),
     size = 1.5, alpha = 0.8
   ) +
-  facet_wrap(p * mech ~ ., ncol = 4) +
-  theme_minimal() +
-  scale_color_manual(values = Manu::get_pal("Hoiho")[1:3]) +
+  facet_wrap(p * mech ~ ., ncol = 4, labeller = all_labels) +
+  #theme_minimal() +
+  scale_color_manual(
+    values = Manu::get_pal("Hoiho")[1:3],
+    labels = c("Cause-spec cause 1", "Cause-spec cause 2", "Subdist. cause 1")
+  ) +
+  scale_linetype_manual(
+    values = 1:3,
+    labels = c("Cause-spec cause 1", "Cause-spec cause 2", "Subdist. cause 1")
+  ) +
   coord_cartesian(ylim = c(0, 2)) +
-  labs(y = "Baseline hazards")
+  labs(y = "Baseline hazards", x = "Time",
+       linetype = NULL,
+       col = NULL)
 
 p2 <- rbindlist(hazs) |>
   pivot_longer(
@@ -99,14 +125,23 @@ p2 <- rbindlist(hazs) |>
     size = 1.5, alpha = 0.8
   ) +
   facet_wrap(p * mech ~ ., ncol = 4) +
-  theme_minimal() +
-  scale_color_manual(values = Manu::get_pal("Hoiho")[1:3]) +
+  #theme_minimal() +
+  scale_color_manual(
+    values = Manu::get_pal("Hoiho")[1:2],
+    labels = c("Cause 1", "Cause 2")
+  ) +
+  scale_linetype_manual(
+    values = 1:2,
+    labels = c("Cause 1", "Cause 2")
+  ) +
   coord_cartesian(ylim = c(0, 1)) +
   theme(
     strip.background = element_blank(),
     strip.text.x = element_blank()
   ) +
-  labs(y = "Baseline cumulative incidence")
+  labs(y = "Baseline cumulative incidence", x = "Time",
+       linetype = NULL,
+       col = NULL)
 
 
 p3 <- rbindlist(HRs) |>
@@ -121,17 +156,38 @@ p3 <- rbindlist(HRs) |>
     size = 1.5, alpha = 0.8
   ) +
   facet_wrap(p * mech ~ ., ncol = 4) +
-  theme_minimal() +
-  scale_color_manual(values = Manu::get_pal("Hoiho")[1:3]) +
+  #theme_minimal() +
+  scale_color_manual(
+    values = Manu::get_pal("Hoiho")[1:3],
+    labels = c("Cause-spec cause 1", "Cause-spec cause 2", "Subdist. cause 1")
+  ) +
+  scale_linetype_manual(
+    values = 1:3,
+    labels = c("Cause-spec cause 1", "Cause-spec cause 2", "Subdist. cause 1")
+  ) +
   geom_hline(yintercept = 1, col = "black", linetype = "dotted") +
   theme(
     strip.background = element_blank(),
     strip.text.x = element_blank()
   ) +
-  labs(y = "Hazard ratio X = 1 vs X = 0")
+  labs(
+    y = "Hazard ratio X = 1 vs X = 0",
+    x = "Time",
+    linetype = NULL,
+    col = NULL
+  )
 
 
-p1 / p2 / p3
+p3
+
+
+ggsave(
+  plot = p1 / p2 / p3,
+  "scenarios_vis.png",
+  dpi = 300,
+  width = 13,
+  height = 9
+)
 
 
 

@@ -85,11 +85,11 @@ coefs_all[, censoring_type := factor(
   censoring_type,
   levels = c("none", "exponential", "curvy_uniform")
 )]
-coefs_all[is.na(cens_rate) & censoring_type == "exponential", cens_rate := 0.5]
+coefs_all[is.na(cens_rate) & censoring_type == "exponential", cens_rate := 0.49]
 coefs_all[censoring_type == "none", cens_rate := 0]
 
 
-coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5))] |>
+coefs_all[term == "X" & !(cens_rate %in% c(0.17, 1.44))] |>
   ggplot(aes(method, estimate - true)) +
   geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
   facet_grid(
@@ -113,10 +113,16 @@ coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5))] |>
   scale_color_manual(values = Manu::get_pal("Hoiho")) +
   labs(x = "Method", y = "Bias")
 
+ggsave(
+  "results_X_bias.jpg",
+  dpi = 200,
+  width = 12,
+  height = 7
+)
 
 # Coverage
 sim_summ_X <- simsum(
-  data = coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5))],
+  data = coefs_all[term == "X" & !(cens_rate %in% c(0.17, 1.44))],
   estvarname = "estimate",
   se = "std.error",
   true = "true",
@@ -158,8 +164,15 @@ data.table(sim_summ_X$summ)[stat == "cover"] |>
   coord_flip(ylim = c(0.65, 1.025)) +
   labs(y = "Coverage (95% CI with MCSE)")
 
+ggsave(
+  "results_X_coverage.jpg",
+  dpi = 200,
+  width = 12,
+  height = 7
+)
 
-coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5)), .(
+
+coefs_all[term == "X" & !(cens_rate %in% c(0.17, 1.44)), .(
   rmse = sqrt(mean((estimate - true)^2)),
   rmse_mcse = rmse_mcse(estimate, true, .N)
 ), by = c("failure_time_model", "method", "prob_space", "censoring_type")] |>
@@ -191,9 +204,15 @@ coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5)), .(
   coord_flip(ylim = c(0, 0.25)) +
   labs(y = "RMSE (95% CI with MCSE)", x = "Method")
 
+ggsave(
+  "results_X_rmse.jpg",
+  dpi = 200,
+  width = 12,
+  height = 7
+)
 
 # Model standard errors? This should look better in a bit..
-coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5))] |>
+coefs_all[term == "X" & !(cens_rate %in% c(0.17, 1.44))] |>
   ggplot(aes(method, std.error)) +
   geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
   facet_grid(
@@ -217,7 +236,12 @@ coefs_all[term == "X" & !(cens_rate %in% c(0.25, 1.5))] |>
   scale_color_manual(values = Manu::get_pal("Hoiho")) +
   labs(y = "Model-based standard error X\n(pooled in MI cases)", y = "Bias")
 
-
+ggsave(
+  "results_X_modelse.jpg",
+  dpi = 200,
+  width = 12,
+  height = 7
+)
 
 # Investigating censoring -------------------------------------------------
 
@@ -228,7 +252,7 @@ df_cens_plot <- copy(coefs_all[!is.na(cens_rate)])[
 ]
 df_cens_plot[, cens_rate := factor(
   cens_rate,
-  levels = c(0, 0.25, 0.5, 1.5),
+  levels = c(0, 0.17, 0.49, 1.44),
   labels = c(0, 0.15, 0.3, 0.5)
 )]
 
@@ -240,11 +264,26 @@ df_cens_plot[, .(bias = mean(estimate - true), .N), by = c(
 )] |>
   ggplot(aes(cens_rate, bias, group = method, col = method)) +
   geom_point(size = 3) +
-  geom_hline(aes(yintercept = 0), linetype = "dashed", size = 1) +
+  geom_hline(aes(yintercept = 0), linetype = "dashed", linewidth = 1) +
   geom_line(aes(linetype = method), size = 1.5) +
-  facet_grid(failure_time_model ~ term) +
+  facet_grid(
+    failure_time_model ~ term,
+    labeller = labeller(
+      failure_time_model = c(
+        "correct_FG" = "Well specified FG and p = 0.15",
+        "misspec_FG" = "Misspecified FG and p = 0.65"
+      )
+    )
+  ) +
   scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  labs(x = "Proportion censored", y = "Bias")
+  labs(x = "Proportion censored (exponential censoring)", y = "Bias")
+
+ggsave(
+  "censoring_investigation.jpg",
+  dpi = 200,
+  width = 10,
+  height = 7
+)
 
 
 # Results Z ---------------------------------------------------------------
@@ -302,67 +341,22 @@ preds_main[, censoring_type := factor(
   levels = c("none", "exponential", "curvy_uniform")
 )]
 
+# Take the average across reps
+avg_preds <- preds_main[, .(
+  pred = mean(pooled_pred), n_sim = .N
+), by = c(
+  "method",
+  "time",
+  "prob_space",
+  "failure_time_model",
+  "censoring_type",
+  "cuminc",
+  "X",
+  "Z"
+)]
 
 # Baseline
-preds_main[, .(
-  pred = mean(pooled_pred)
-), by = c(
-  "method",
-  "time",
-  "prob_space",
-  "failure_time_model",
-  "censoring_type",
-  "cuminc",
-  "X",
-  "Z"
-)][X == 0 & Z == 0] |>
-  ggplot(aes(time, 100 * (pred - cuminc))) +
-  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
-  facet_grid(
-    prob_space ~ failure_time_model * censoring_type,
-    scales = "free",
-    labeller = all_labels
-  ) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_manual(values = Manu::get_pal("Hoiho"))
-
-
-# X = 1 and Z = 1
-preds_main[, .(
-  pred = mean(pooled_pred)
-), by = c(
-  "method",
-  "time",
-  "prob_space",
-  "failure_time_model",
-  "censoring_type",
-  "cuminc",
-  "X",
-  "Z"
-)][X == 1 & Z == 1] |>
-  ggplot(aes(time, 100 * (pred - cuminc))) +
-  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
-  facet_grid(
-    prob_space ~ failure_time_model * censoring_type,
-    scales = "free",
-    labeller = all_labels
-  ) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_manual(values = Manu::get_pal("Hoiho"))
-
-
-preds_main[, .(
-  pred = mean(pooled_pred)
-), by = c(
-  "method",
-  "time",
-  "prob_space",
-  "failure_time_model",
-  "censoring_type",
-  "cuminc",
-  "X",
-  "Z"
-)][X == 1 & Z == 1] |>
+avg_preds[X == 0 & Z == 0] |>
   ggplot(aes(time, 100 * pred)) +
   geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
   geom_line(aes(y = 100 * cuminc), col = "black", size = 1.25) +
@@ -371,8 +365,75 @@ preds_main[, .(
     scales = "free",
     labeller = all_labels
   ) +
-  scale_color_manual(values = Manu::get_pal("Hoiho"))
+  scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  labs(x = "Time", y = "Estimated baseline cumulative incidence (%)")
 
+ggsave(
+  "results_preds_baseline.jpg",
+  dpi = 200,
+  width = 12,
+  height = 7
+)
+
+avg_preds[X == 0 & Z == 0] |>
+  ggplot(aes(time, 100 * (pred - cuminc))) +
+  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
+  facet_grid(
+    prob_space ~ failure_time_model * censoring_type,
+    scales = "free",
+    labeller = all_labels
+  ) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  labs(x = "Time", y = "Estimated - True baseline cumulative incidence (%)")
+
+ggsave(
+  "results_preds_baseline_diff.jpg",
+  dpi = 200,
+  width = 12,
+  height = 7
+)
+
+# X = 1 and Z = 1
+avg_preds[X == 1 & Z == 1] |>
+  ggplot(aes(time, 100 * (pred - cuminc))) +
+  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
+  facet_grid(
+    prob_space ~ failure_time_model * censoring_type,
+    scales = "free",
+    labeller = all_labels
+  ) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  labs(x = "Time", y = "Estimated - True cumulative incidence for\npatient X = 1 and Z = 1 (%)")
+
+ggsave(
+  "results_preds_high_diff.jpg",
+  dpi = 200,
+  width = 12,
+  height = 7
+)
+
+avg_preds[X == 1 & Z == 1] |>
+  ggplot(aes(time, 100 * pred)) +
+  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
+  geom_line(aes(y = 100 * cuminc), col = "black", size = 1.25) +
+  facet_grid(
+    prob_space ~ failure_time_model * censoring_type,
+    scales = "free",
+    labeller = all_labels
+  ) +
+  scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  labs(x = "Time", y = "Estimated cumulative incidence for\npatient X = 1 and Z = 1 (%)")
+
+
+
+ggsave(
+  "results_preds_high.jpg",
+  dpi = 200,
+  width = 12,
+  height = 7
+)
 
 # Big betas example -------------------------------------------------------
 
@@ -436,11 +497,32 @@ coefs_stress |>
     col = "darkred"
   ) +
   scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  labs(x = "Method", y = "Bias")
+  labs(x = "Method", y = "Estimated coefficient")
+
+ggsave(
+  "results_stress.jpg",
+  dpi = 200,
+  width = 12,
+  height = 7
+)
 
 # readRDS("data-raw/sims_cens.rds")
 # ggsave("interim-sims.png", dpi = 300, units = "in", width = 9, height = 6)
 
+
+# Check rejection sampling warnigns
+library(tidyverse)
+tar_meta(fields = c(name, seconds, warnings, error)) |>
+  filter(!is.na(warnings)) |>
+  separate_rows(warnings, sep = "limit..") |>
+  filter(warnings != "") |>
+  #mutate(test = gsub(" times.*$", replacement = "", warnings)) |>
+  mutate(rjfails = parse_number(warnings)) |>
+  group_by(name) |>
+  View()
+  summarise(
+    n = n()
+  )
 
 # Horrible zipper plot ----------------------------------------------------
 
