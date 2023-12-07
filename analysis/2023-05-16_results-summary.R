@@ -5,7 +5,7 @@
 
 
 # Set a general theme
-invisible(lapply(list.files(here("R"), full.names = TRUE), source))
+invisible(lapply(list.files(here::here("R"), full.names = TRUE), source))
 library(extrafont)
 library(Manu)
 
@@ -115,6 +115,39 @@ coefs_all[term == "X" & !(cens_rate %in% c(0.17, 1.44))] |>
 
 ggsave(
   "results_X_bias.jpg",
+  dpi = 200,
+  width = 12,
+  height = 7
+)
+
+# Just for ISCB talk: excluded admin cens
+coefs_all[term == "X" & !(cens_rate %in% c(0.17, 1.44)) &
+            censoring_type != "curvy_uniform"] |>
+  ggplot(aes(method, estimate - true)) +
+  geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
+  facet_grid(
+    prob_space ~ failure_time_model * censoring_type,
+    #scales = "free_y",
+    labeller = all_labels
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  ) +
+  geom_hline(aes(yintercept = 0), linetype = "dashed", linewidth = 1) +
+  stat_summary(
+    fun = mean,
+    fun.min = mean,
+    fun.max = mean,
+    geom = "crossbar",
+    linewidth = 0.75,
+    col = "darkred"
+  ) +
+  scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  labs(x = "Method", y = "Bias")
+
+ggsave(
+  "results_X_bias_ISCB.jpg",
   dpi = 200,
   width = 12,
   height = 7
