@@ -5,7 +5,8 @@ library(mice)
 library(future)
 library(future.apply)
 library(riskRegression) # for predictrisk
-library(kmi)
+#library(kmi)
+source("R/kmi-timefixed.R")
 library(ggplot2)
 library(patchwork)
 
@@ -29,7 +30,7 @@ dat_sub <- dat[, c(
   "time_ci_adm",
   "status_ci_adm",
   # Covariates for predictions
-  "age_allo1_decades",
+  "age_allo1_decades", # this one is centered
   "PATSEX",
   "hctci_risk",
   "KARNOFSK_threecat",
@@ -75,12 +76,18 @@ dat_sub[, ind_cens_true := ifelse(ind_cens_adm == 1, 2, status_ci_adm)]
 dat_sub[, .(status_ci_adm, ind_cens_adm, ind_cens_true)]
 with(dat_sub, time_ci_adm[time_ci_adm >= 60]) |> table()
 with(dat_sub, time_ci_adm[ind_cens_true == 0]) |> max()
+with(dat_sub, time_ci_adm[ind_cens_true == 0]) |> length()
+
+dat_sub[year_allo1 == 10][["time_ci_adm"]] |> hist()
+dat_sub[year_allo1 == 10][order(time_ci_adm, decreasing = TRUE), .(
+  time_ci_adm, status_ci_adm
+)] |> View()
 
 # Make model for censoring! Exploratory; use mainly fully obs vars
 mod_cens <- coxph(
   #Surv(time_ci_adm, ind_cens_true == 0) ~ .,
   Surv(time_ci_adm, ind_cens_true == 0) ~ year_allo1 +
-    intdiagtr_allo1 +
+    log(intdiagtr_allo1) +
     donrel_bin +
     age_allo1_decades +
     PATSEX +
@@ -88,7 +95,7 @@ mod_cens <- coxph(
     ric_allo1 +
     KARNOFSK_threecat +
     tbi_allo1,
-  data = dat_sub
+  data = dat_sub[!(year_allo1 %in% c(8, 9, 10))] # 5 y potential follow-up
 )
 
 # Tbi also very predictive?
@@ -133,7 +140,8 @@ points(dat_sub$time_ci_adm, dat_sub$H1)
 # (Last event time gets added to support of cens dist..)
 cens_imps <- kmi(
   #formula = Surv(time_ci_adm, ind_cens_true != 0) ~ 1,
-  formula = Surv(time_ci_adm, status_ci_adm != 0) ~ 1,
+  formula = Surv(time_ci_adm, status_ci_adm != 0) ~
+    year_allo1 + intdiagtr_allo1 + ric_allo1 + tbi_allo1,
   data = data.frame(dat_sub),
   #etype = ind_cens_true,
   etype = status_ci_adm,

@@ -85,6 +85,9 @@ kmi <- function(formula, data, id = NULL, etype, failcode = 1,
   cens.times <- toimpute$cens.times
   tmp <- findInterval(itimes, c(0, cens.times))
 
+  #browser()
+
+
   if (length(cens.times) == 1) stop("'kmi' can't make imputation based on one censoring time")
 
   res <- lapply(seq_len(nimp), function(i) {
@@ -133,6 +136,7 @@ kmi.classic <- function(y, x, etype, failcode, epsilon,
   otimes <- y[ind, 1]
   cn <- colnames(x)
 
+  #browser()
   xx <- x[-ind, , drop = FALSE]
   ## let's deal with missing values in a really ugly way,
   ## i.e., mean imputation
