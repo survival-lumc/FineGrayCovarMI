@@ -4,23 +4,24 @@ library(smcfcs)
 library(mice)
 library(future)
 library(future.apply)
-library(riskRegression) # for predictrisk
-#library(kmi)
-source("R/kmi-timefixed.R")
+library(riskRegression) # for predictRisk()
+library(kmi)
 library(ggplot2)
 library(patchwork)
+#source("R/kmi-timefixed.R")
 
 # Global seed
 options(contrasts = rep("contr.treatment", 2))
-set.seed(89648)
+#set.seed(89648)
 
 source("R/data-generation.R")
+source("R/crprep-timefixed.R")
 
 
 # Data set-up -------------------------------------------------------------
 
 
-# Directly from Polverelli imputation
+# Directly from Polverelli imputation set-up
 dat <- readRDS("data/dat_clean.rds")
 setDT(dat)
 
@@ -45,7 +46,8 @@ dat_sub <- dat[, c(
   "tbi_allo1"
 )]
 
-# (Other possible disease vars: wbc_allo1, hb_allo1, pb_allo1, sweat_allo1, WEIGLOSS_allo1..)
+# Other possible disease vars:
+# wbc_allo1, hb_allo1, pb_allo1, sweat_allo1, WEIGLOSS_allo1..
 
 # Use complete outcome data, and add id column
 dat_sub <- dat_sub[complete.cases(status_ci_adm), ]
@@ -63,31 +65,32 @@ naniar::miss_var_summary(dat_sub)
 naniar::prop_complete_case(dat_sub)
 
 
-# Solve the admin censoring bit here.. ------------------------------------
+# On the censoring... -----------------------------------------------------
 
 
 # Dataset created on 20/07/2023, cohort 2009-2019
 
+# Event props:
+table(dat_sub$status_ci_adm)
+
 # First start with the admin cens indicator
 dat_sub[, ind_cens_adm := as.numeric(time_ci_adm == 60)]
+table(dat_sub$ind_cens_adm) # 724 pats admin censored at 60 mo.s
 
-# Pretend adm cens is 'cause 2' so that the censoring model is right
-dat_sub[, ind_cens_true := ifelse(ind_cens_adm == 1, 2, status_ci_adm)]
-dat_sub[, .(status_ci_adm, ind_cens_adm, ind_cens_true)]
-with(dat_sub, time_ci_adm[time_ci_adm >= 60]) |> table()
-with(dat_sub, time_ci_adm[ind_cens_true == 0]) |> max()
+# Pretend adm cens is 'cause 3' so that the censoring model is 'right'
+dat_sub[, ind_cens_true := ifelse(ind_cens_adm == 1, 3, status_ci_adm)]
+
+# 1292 of 'actual' censoring, including those Tx'ed in 2018-2019 which
+# have not quite had 60 mo.s potential follow-up up
 with(dat_sub, time_ci_adm[ind_cens_true == 0]) |> length()
-
-dat_sub[year_allo1 == 10][["time_ci_adm"]] |> hist()
 dat_sub[year_allo1 == 10][order(time_ci_adm, decreasing = TRUE), .(
   time_ci_adm, status_ci_adm
-)] |> View()
+)] #|> View()
 
-# Make model for censoring! Exploratory; use mainly fully obs vars
+# Exploratory model for 'true' censoring, use mainly fully observed vars
 mod_cens <- coxph(
-  #Surv(time_ci_adm, ind_cens_true == 0) ~ .,
   Surv(time_ci_adm, ind_cens_true == 0) ~ year_allo1 +
-    log(intdiagtr_allo1) +
+    I(intdiagtr_allo1 / 12) + # years
     donrel_bin +
     age_allo1_decades +
     PATSEX +
@@ -95,17 +98,26 @@ mod_cens <- coxph(
     ric_allo1 +
     KARNOFSK_threecat +
     tbi_allo1,
-  data = dat_sub[!(year_allo1 %in% c(8, 9, 10))] # 5 y potential follow-up
+  data = dat_sub[!(year_allo1 %in% c(8, 9, 10))] # Reduce to those with 5y potential follow-up
 )
 
-# Tbi also very predictive?
+# TBI, RIC, Donor type should probs be included in model too..
 summary(mod_cens)
 
-# (!) To do: check notes with Liesbeth, take those with admin cens less that 1y
-# .. pre dataset creation
+# Note for KMI:
+# - Difficult to specify mix of admin and random cens; if largest time
+# is event time, it is added to support of cens distribution
+# - Proposal: keep all admin + cens times together, and model to impute =
+# continuous year of allo, continuous int diag, TBI, RIC, donor type
+# - Not perfect, but should be granular enough
+# - there 0.5-1% missing vals in TBI, RIC, donor type are dealt with
+# internally by KMI using mean imp (proposal to accept and move on)
 
 
 # First impute the censoring times for all methods ------------------------
+
+
+# For estimation: quicker to impute cens times for all imp methods!
 
 
 # Add the cumulative hazards first
@@ -122,12 +134,18 @@ dat_sub[, ':=' (
     statusvar = status_ci_adm,
     cause = 2
   ),
-  status_ci_adm = factor(status_ci_adm),
-  wbc_allo1 = log(wbc_allo1 + 1)
+  #status_ci_adm = factor(status_ci_adm),
+  # Add separate indicators
+  D1 = as.numeric(status_ci_adm == 1),
+  D2 = as.numeric(status_ci_adm == 2),
+  wbc_allo1 = log(wbc_allo1 + 1) # because very skewed
 )]
 
 # Check columns, and the hazards (would all cause hazard work well too here?)
 colnames(dat_sub)
+
+# Non-parametric cumincs, quite different to MDS example!
+plot(cmprsk::cuminc(dat_sub$time_ci_adm, dat_sub$status_ci_adm))
 
 # Cumulative hazards against each other
 plot(dat_sub$H1, dat_sub$H2)
@@ -136,43 +154,26 @@ abline(a = 0, b = 1)
 plot(dat_sub$time_ci_adm, dat_sub$H2)
 points(dat_sub$time_ci_adm, dat_sub$H1)
 
-# Figure out this censoring stuff later!
-# (Last event time gets added to support of cens dist..)
+# Impute censoring times!!
 cens_imps <- kmi(
-  #formula = Surv(time_ci_adm, ind_cens_true != 0) ~ 1,
   formula = Surv(time_ci_adm, status_ci_adm != 0) ~
-    year_allo1 + intdiagtr_allo1 + ric_allo1 + tbi_allo1,
+    year_allo1 + intdiagtr_allo1 + ric_allo1 + tbi_allo1 + donrel_bin,
   data = data.frame(dat_sub),
-  #etype = ind_cens_true,
   etype = status_ci_adm,
   failcode = 2, # non-relapse mortality is the outcome
-  nimp = 20 # make bigger later
+  nimp = 25 # make bigger later
 ) # If we are running once, why not bootstrap?
 
 # Checks with single imps, also to set-up imp methods
 dat_single_imp <- cbind.data.frame(cens_imps$original.data, cens_imps$imputed.data[[1]])
 
-# Check bottom part later:
-
-# head(dat_single_imp)
-# dat_single_imp$newevent <- as.numeric(
-#   ifelse(
-#     dat_single_imp$ind_cens_adm == 1,
-#     "0",
-#     as.character(dat_single_imp$newevent)
-#   )
-# )
-# dat_single_imp[, c(
-#   "id",
-#   "time_ci_adm",
-#   "status_ci_adm",
-#   "newtimes",
-#   "newevent",
-#   "ind_cens_adm",
-#   "ind_cens_true"
-# )] #|> View()
-#
-# with(dat_single_imp, newtimes[status_ci_adm == 1] |> hist(ylim = c(0, 500)))
+# For set-up
+dat_single_imp$H1_subdist <- compute_marginal_cumhaz(
+  type = "cause_spec",
+  timevar = dat_single_imp$newtimes,
+  statusvar = dat_single_imp$newevent,
+  cause = 2
+)
 
 
 # Set-up imputations ------------------------------------------------------
@@ -198,17 +199,6 @@ sm_form <- reformulate(
 
 sm_predictors <- all.vars(update(sm_form, 1 ~ .))
 
-
-# Here is the start of one iteration of the lapply!
-
-# First add cumdist hazard
-dat_single_imp$H1_subdist <- compute_marginal_cumhaz(
-  type = "cause_spec",
-  timevar = dat_single_imp$newtimes,
-  statusvar = dat_single_imp$newevent,
-  cause = 2
-)
-
 # Set-up methods using just this first imp dataset
 meths_smcfcs <- make.method(dat_single_imp, defaultMethod = c("norm", "logreg", "mlogit", "podds"))
 meths_mice <- make.method(dat_single_imp) # pmm?
@@ -216,12 +206,30 @@ meths_mice <- make.method(dat_single_imp) # pmm?
 # Predictor matrices
 predmat_csh <- predmat_subdist <- make.predictorMatrix(dat_single_imp)
 predmat_csh[, setdiff(
-  colnames(predmat_csh), c(sm_predictors, "status_ci_adm", "H1", "H2")
+  colnames(predmat_csh), c(sm_predictors, "D1", "D2", "H1", "H2")
 )] <- 0
 predmat_subdist[, setdiff(
-  colnames(predmat_subdist), c(sm_predictors, "newevent", "H2")#"H1_subdist")
-)] <- 0 # test by ignoring comprisks
+  colnames(predmat_subdist), c(sm_predictors, "newevent", "H1_subdist")
+)] <- 0
 
+# A couple of stress tests: (may be a bit silly)
+predmat_stress1 <- predmat_stress2 <- make.predictorMatrix(dat_single_imp)
+
+# Cox for rel, ignore NRM (which is our outcome loool)
+# Im sick of everything lets ignore outcome!!
+predmat_stress1[, setdiff(
+  colnames(predmat_stress1), c("PATSEX")#, "D1", "H1")
+)] <- 0
+
+predmat_stress1[, setdiff(
+  colnames(predmat_stress1), c(sm_predictors)#, "D1", "H1")
+)] <- 0
+
+# Cox for NRM (ignoring competing event)
+# Now not the hazard, just the time
+predmat_stress2[, setdiff(
+  colnames(predmat_stress2), c(sm_predictors, "D2", "time_ci_adm")
+)] <- 0
 
 # Now applying across imp datasets ----------------------------------------
 
@@ -234,24 +242,24 @@ n_cycles <- 10
 cens_imp_dats <- lapply(
   X = cens_imps$imputed.data,
   FUN = function(imp_times) {
-    dat <- cbind.data.frame(cens_imps$original.data, imp_times)
-    dat$H1_subdist <- compute_marginal_cumhaz(
+    dato <- cbind.data.frame(cens_imps$original.data, imp_times)
+    dato$H1_subdist <- compute_marginal_cumhaz(
       type = "cause_spec",
-      timevar = dat$newtimes,
-      statusvar = dat$newevent,
+      timevar = dato$newtimes,
+      statusvar = dato$newevent,
       cause = 2
     )
-    return(dat)
+    return(dato)
   }
 )
 
-# First actually check the variance in the subdist marginal haz, otherwise we just compute once
+# First actually check the variance in the subdist marginal haz
 rbindlist(cens_imp_dats, idcol = "imp") |>
   ggplot(aes(newtimes, H1_subdist, group = factor(imp), col = factor(imp))) +
   geom_step() +
   theme(legend.position = "none")
 
-# Hardly any difference, just compute once!
+# Hardly any difference! Just compute once?
 
 # Now start the imps..
 plan(multisession, workers = 3)
@@ -299,14 +307,304 @@ impdats_smcfcs_subdist <- future_lapply(
       smformula = deparse1(update(sm_form, Surv(newtimes, newevent) ~ .)),
       m = n_imps,
       numit = n_cycles,
-      method = meths_smcfcs
+      method = meths_smcfcs,
+      rjlimit = 5000
     )
     imps$impDatasets[[1]]
   },
   future.seed = TRUE
 )
 
+impdats_smcfcs_csh <- future_lapply(
+  X = cens_imp_dats,
+  FUN = function(imp_times) {
+    #imp_times$newevent <- as.numeric(imp_times$newevent) - 1L
+    imps <- smcfcs(
+      originaldata = imp_times,
+      smtype = "compet",
+      smformula = list(
+        deparse1(update(sm_form, Surv(time_ci_adm, status_ci_adm == 1) ~ .)),
+        deparse1(update(sm_form, Surv(time_ci_adm, status_ci_adm == 2) ~ .))
+      ),
+      m = n_imps,
+      numit = n_cycles,
+      method = meths_smcfcs,
+      rjlimit = 5000
+    )
+    imps$impDatasets[[1]]
+  },
+  future.seed = TRUE
+)
+
+
+# Now the stress tests
+impdats_mice_stress1 <- future_lapply(
+  X = cens_imp_dats,
+  FUN = function(imp_times) {
+    imps <- mice(
+      data = imp_times,
+      m = n_imps,
+      maxit = n_cycles,
+      method = meths_mice,
+      predictorMatrix = predmat_stress1,
+      printFlag = FALSE
+    )
+    complete(imps, "all")[[1]]
+  },
+  future.seed = TRUE
+)
+
+impdats_mice_stress2 <- future_lapply(
+  X = cens_imp_dats,
+  FUN = function(imp_times) {
+    imps <- mice(
+      data = imp_times,
+      m = n_imps,
+      maxit = n_cycles,
+      method = meths_mice,
+      predictorMatrix = predmat_stress2,
+      printFlag = FALSE
+    )
+    complete(imps, "all")[[1]]
+  },
+  future.seed = TRUE
+)
+
 plan(sequential)
+
+
+
+# Coefficients ------------------------------------------------------------
+
+
+mods_smcfcs_subdist <- lapply(
+  impdats_smcfcs_subdist,
+  function(impdat) {
+    mod <- do.call(
+      what = survival::coxph,
+      args = list(
+        formula = update(sm_form, Surv(newtimes, newevent) ~ .),
+        data = impdat,
+        x = TRUE
+      )
+    )
+    # Cens times are different in each, so predict at horizon
+    #cbind.data.frame(preds = drop(predictRisk(mod, newdata = impdat, times = horizon)), impdat)
+  }
+)
+
+mods_smcfcs_csh <- lapply(
+  impdats_smcfcs_csh,
+  function(impdat) {
+    mod <- do.call(
+      what = survival::coxph,
+      args = list(
+        formula = update(sm_form, Surv(newtimes, newevent == 2) ~ .),
+        data = impdat,
+        x = TRUE
+      )
+    )
+    # Cens times are different in each, so predict at horizon
+    #cbind.data.frame(preds = drop(predictRisk(mod, newdata = impdat, times = horizon)), impdat)
+  }
+)
+
+mods_mice_csh <- lapply(
+  impdats_mice_csh,
+  function(impdat) {
+    mod <- do.call(
+      what = survival::coxph,
+      args = list(
+        formula = update(sm_form, Surv(newtimes, newevent == 2) ~ .),
+        data = impdat,
+        x = TRUE
+      )
+    )
+    # Cens times are different in each, so predict at horizon
+    #cbind.data.frame(preds = drop(predictRisk(mod, newdata = impdat, times = horizon)), impdat)
+  }
+)
+
+mods_mice_subdist <- lapply(
+  impdats_mice_subdist,
+  function(impdat) {
+    mod <- do.call(
+      what = survival::coxph,
+      args = list(
+        formula = update(sm_form, Surv(newtimes, newevent == 2) ~ .),
+        data = impdat,
+        x = TRUE
+      )
+    )
+    # Cens times are different in each, so predict at horizon
+    #cbind.data.frame(preds = drop(predictRisk(mod, newdata = impdat, times = horizon)), impdat)
+  }
+)
+
+mods_cca <- lapply(
+  cens_imp_dats,
+  function(impdat) {
+    mod <- do.call(
+      what = survival::coxph,
+      args = list(
+        formula = update(sm_form, Surv(newtimes, newevent == 2) ~ .),
+        data = impdat,
+        x = TRUE
+      )
+    )
+    # Cens times are different in each, so predict at horizon
+    #cbind.data.frame(preds = drop(predictRisk(mod, newdata = impdat, times = horizon)), impdat)
+  }
+)
+
+
+# Also CCA
+rbind(
+  cbind(
+    broom::tidy(pool(mods_smcfcs_csh), conf.int = TRUE, exponentiate = TRUE),
+    "method" = "SMC-FCS CSH"
+  ),
+  cbind(
+    broom::tidy(pool(mods_smcfcs_subdist), conf.int = TRUE, exponentiate = TRUE),
+    "method" = "SMC-FCS Subdist"
+  ),
+  cbind(
+    broom::tidy(pool(mods_cca), conf.int = TRUE, exponentiate = TRUE),
+    "method" = "CCA"
+  ),
+  cbind(
+    broom::tidy(pool(mods_mice_csh), conf.int = TRUE, exponentiate = TRUE),
+    "method" = "MICE CSH"
+  ),
+  cbind(
+    broom::tidy(pool(mods_mice_subdist), conf.int = TRUE, exponentiate = TRUE),
+    "method" = "MICE Subdist"
+  )
+) |>
+  ggplot(aes(estimate, term, col = method)) +
+  geom_point(size = 3, position = position_dodge(width = 0.75)) +
+  geom_linerange(
+    linewidth = 1,
+    aes(xmin = conf.low, xmax = conf.high),
+    position = position_dodge(width = 0.75)
+  ) +
+  scale_x_continuous(
+    name = "Hazard ratio (95% CI)",
+    trans = "log",
+    breaks = c(0.5, 1, 1.5, 2, 3)
+  ) +
+  scale_color_brewer(palette = "Dark2") +
+  theme_minimal() +
+  coord_cartesian(xlim = c(0.65, 3)) +
+  geom_vline(xintercept = 1, linetype = "dotted")
+
+
+
+# Now the stress test -----------------------------------------------------
+
+
+mods_mice_stress1 <- lapply(
+  impdats_mice_stress1,
+  function(impdat) {
+    mod <- do.call(
+      what = survival::coxph,
+      args = list(
+        formula = update(sm_form, Surv(newtimes, newevent == 2) ~ .),
+        data = impdat,
+        x = TRUE
+      )
+    )
+    # Cens times are different in each, so predict at horizon
+    #cbind.data.frame(preds = drop(predictRisk(mod, newdata = impdat, times = horizon)), impdat)
+  }
+)
+
+mods_mice_stress2 <- lapply(
+  impdats_mice_stress2,
+  function(impdat) {
+    mod <- do.call(
+      what = survival::coxph,
+      args = list(
+        formula = update(sm_form, Surv(newtimes, newevent == 2) ~ .),
+        data = impdat,
+        x = TRUE
+      )
+    )
+    # Cens times are different in each, so predict at horizon
+    #cbind.data.frame(preds = drop(predictRisk(mod, newdata = impdat, times = horizon)), impdat)
+  }
+)
+
+
+rbind(
+  cbind(
+    broom::tidy(pool(mods_cca), conf.int = TRUE, exponentiate = TRUE),
+    "method" = "CCA"
+  ),
+  cbind(
+    broom::tidy(pool(mods_mice_subdist), conf.int = TRUE, exponentiate = TRUE),
+    "method" = "MICE Subdist"
+  ),
+  cbind(
+    broom::tidy(pool(mods_mice_stress1), conf.int = TRUE, exponentiate = TRUE),
+    "method" = "MICE stress 1"
+  ),
+  cbind(
+    broom::tidy(pool(mods_mice_stress2), conf.int = TRUE, exponentiate = TRUE),
+    "method" = "MICE stress 2"
+  )
+) |>
+  ggplot(aes(estimate, term, col = method)) +
+  geom_point(size = 3, position = position_dodge(width = 0.75)) +
+  geom_linerange(
+    linewidth = 1,
+    aes(xmin = conf.low, xmax = conf.high),
+    position = position_dodge(width = 0.75)
+  ) +
+  scale_x_continuous(
+    name = "Hazard ratio (95% CI)",
+    trans = "log",
+    breaks = c(0.5, 1, 1.5, 2, 3)
+  ) +
+  scale_color_brewer(palette = "Dark2") +
+  theme_minimal() +
+  coord_cartesian(xlim = c(0.65, 3)) +
+  geom_vline(xintercept = 1, linetype = "dotted")
+
+
+library(rstpm2)
+
+fit <- stpm2(
+  Surv(newtimes, newevent == 2) ~ 1
+  , data=dat_single_imp, df = 4)
+fit <- stpm2(
+  update(sm_form, Surv(newtimes, newevent == 2) ~ .)
+  , data=dat_single_imp, df = 4)
+
+fit <- stpm2(Surv(time_ci_adm, status_ci_adm == 1) ~ 1, data = dat_single_imp, df = 4)
+fit <- stpm2(Surv(time_ci_adm, status_ci_adm == 2) ~ 1, data = dat_single_imp, df = 4)
+grid <- seq(0.01, 60, by = 0.1)
+
+plot(
+  grid,
+  predict(
+  fit,
+  type = "hazard",
+  newdata = data.frame(newtimes = grid))
+)
+
+
+plot(
+  grid,
+  predict(
+    fit,
+    type = "hazard",
+    newdata = data.frame(time_ci_adm = grid))
+)
+
+
+# Predictions -------------------------------------------------------------
+
 
 
 # This won't work because of different censoring times
