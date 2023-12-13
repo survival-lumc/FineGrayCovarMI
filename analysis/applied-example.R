@@ -25,6 +25,9 @@ source("R/crprep-timefixed.R")
 dat <- readRDS("data/dat_clean.rds")
 setDT(dat)
 
+# Proportion..
+barplot(table(dat$pb_allo1))
+
 # Subset of relevant vars
 dat_sub <- dat[, c(
   # Outcomes
