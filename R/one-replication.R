@@ -36,15 +36,6 @@ tidy_tweaked <- function(x, ...) {
   broom::tidy(x, ...)
 }
 
-pool_tweaked <- function(object, ...) {
-
-  if (!is.list(object)) stop("Argument 'object' not a list", call. = FALSE)
-
-  # Check if first element is FGR - if so, subset crrFit part of each FGR
-  if (inherits(object[[1]], "FGR")) object <- lapply(object, "[[", "crrFit")
-  mice::pool(object, ...)
-}
-
 # One replication of simulation study
 one_replication <- function(args_event_times,
                             args_missingness,
@@ -207,6 +198,16 @@ one_replication <- function(args_event_times,
   # Fit models in each imputed dataset - this is normally the bottleneck when model_fun was FGR()
   nested_impdats[, mods := .(
     list(lapply(imp_dats[[1]], function(imp_dat) model_fun(model_formula, data = imp_dat)))
+  ), by = method]
+
+  summaries_impdats <- nested_impdats[, .(
+    coefs_summary = list(tidy(pool(mods[[1]]), conf.int = TRUE))#,
+    #preds_summary = list(
+    #  rbindlist(
+    #    lapply(mods[[1]], extract_mod_essentials, timepoints = pred_times),
+    #    idcol = "imp"
+    #  )
+    #)
   ), by = method]
 
   # Create summaries (= pooled coefficients, and the prediction 'essentials')
