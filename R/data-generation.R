@@ -1,10 +1,8 @@
 # For simulating from Weibull distribution in shape + rate parametrization
-rweibull_KM <- function(n, shape, rate) {
-  (-log(runif(n)) / rate)^(1 / shape)
-}
+rweibull_KM <- function(n, shape, rate) (-log(runif(n)) / rate)^(1 / shape)
 
 # Generate covariates
-generate_covariates <- function(n, X_type) {
+generate_covariates <- function(n, X_type = "binary") {
   dat <- data.table(id = seq_len(n), Z = rnorm(n = n, mean = 0, sd = 1))
   dat[, X := switch(
     X_type,
@@ -239,7 +237,7 @@ recover_weibull_lfps <- function(large_dat,
   base_rate_cs1 <- exp(mod_weib_cs1$coefficients[[1]])^(-shape_cs1)
   lfps_cs1 <- -mod_weib_cs1$coefficients[-1] * shape_cs1
 
-  # Recover LFPs for cause 1
+  # Recover LFPs for cause 2
   form_cs2 <- update(params_correct_FG$cause2$formula, Surv(time, D == 2) ~ .)
   mod_weib_cs2 <- survreg(form_cs2, data = large_dat, dist = "weibull")
   shape_cs2 <- 1 / mod_weib_cs2$scale

@@ -1,7 +1,3 @@
-# Possible to-do/ideas:
-# - Add proposed smcfcs.finegray to smcfcs() package; add options to kmi settings?
-# - Visualise missing mechanism with jitter plots! (+ visualise the settings, together with base cumincs)
-
 # Workhorse packages
 library("targets")
 library("tarchetypes")
@@ -13,13 +9,10 @@ library("here")
 source(here("packages.R"))
 invisible(lapply(list.files(here("R"), full.names = TRUE), source))
 
-# (MAKE INTO TARGETS MARKDOWN?)
+# (!) Make this into targets mardown?
 
 # To run pipeline in parallel
 plan(callr)
-
-# For debugging:
-#tar_option_set(error = "null")
 
 # Data-generating parameters depend on p-space domination, so we need to iterate
 # over that parameter separately
@@ -35,7 +28,7 @@ dynamic_settings <- list(
 )
 
 # Other global settings:
-pred_timepoints <- c(0, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
+pred_timepoints <- c(0.001, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
 num_imputations <- 30
 num_cycles <- 20
 num_replications <- 500

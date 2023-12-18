@@ -1,8 +1,15 @@
 # Timefixed version of {kmi} (code taken from https://github.com/aallignol/kmi)
-
-kmi <- function(formula, data, id = NULL, etype, failcode = 1,
-                nimp = 10, epsilon = 1,
-                bootstrap = FALSE, nboot = 10, timefix = FALSE) {
+# (needed just for the simulations)
+kmi <- function(formula,
+                data,
+                id = NULL,
+                etype,
+                failcode = 1,
+                nimp = 10,
+                epsilon = 1,
+                bootstrap = FALSE,
+                nboot = 10,
+                timefix = FALSE) { # Only new argument, use in calls to survfit within kmi.classic()
 
   if (missing(data))
     stop("A data frame in which to interpret the formula must be supplied")
@@ -75,7 +82,7 @@ kmi <- function(formula, data, id = NULL, etype, failcode = 1,
     ## for classical right-censored data
     toimpute <- kmi.classic(Y, X, etype = etype, failcode = failcode,
                             epsilon = epsilon,
-                            bootstrap = bootstrap, nboot = nboot, timefix = timefix)
+                            bootstrap = bootstrap, nboot = nboot, timefix = timefix) # (!) Edited here
   }
 
   itimes <- toimpute$itimes
@@ -120,8 +127,15 @@ kmi <- function(formula, data, id = NULL, etype, failcode = 1,
 ### function to get the censoring times and distribution
 ### from competing risks right-censored data
 
-kmi.classic <- function(y, x, etype, failcode, epsilon,
-                        bootstrap, nboot, timefix = FALSE) {
+kmi.classic <- function(y,
+                        x,
+                        etype,
+                        failcode,
+                        epsilon,
+                        bootstrap,
+                        nboot,
+                        timefix = FALSE) {
+
   if (!is.Surv(y)) stop("y must be a Surv object")
   if (attr(y, "type") != "right") stop("Can only handle right censored data")
   if (is.null(etype)) stop("Argument 'etype' is missing with no default")
@@ -164,7 +178,7 @@ kmi.classic <- function(y, x, etype, failcode, epsilon,
       ff <- update.formula(ff, paste(". ~", paste(cn, collapse = "+")))
       for (l in seq_len(nboot)) {
         temp <- coxph(ff, as.data.frame(x))
-        tmp <- summary(survfit(temp, as.data.frame(xx), timefix = timefix))
+        tmp <- summary(survfit(temp, as.data.frame(xx), timefix = timefix)) # (!) Edited here
         ordre <- findInterval(cens.times, tmp$time)
         ordre[ordre == 0] <- NA
         g[,, l] <- tmp$surv[ordre, ]
@@ -176,7 +190,7 @@ kmi.classic <- function(y, x, etype, failcode, epsilon,
       g <-  matrix(0, nrow = nboot, ncol = length(cens.times))
       for (l in seq_len(nboot)) {
         tmp <- summary(survfit(Surv(y[index[[l]], 1],
-                                    y[index[[l]], 2] == 0) ~ 1, timefix = timefix))
+                                    y[index[[l]], 2] == 0) ~ 1, timefix = timefix)) # (!) Edited here
         ordre <- findInterval(cens.times, tmp$time)
         ordre[ordre == 0] <- NA
         g[l, ] <- tmp$surv[ordre]
@@ -194,11 +208,11 @@ kmi.classic <- function(y, x, etype, failcode, epsilon,
 
       ff <- update.formula(ff, paste(". ~", paste(cn, collapse = "+")))
       temp <- coxph(ff, as.data.frame(x))
-      g <- summary(survfit(temp, as.data.frame(xx), timefix = timefix),
+      g <- summary(survfit(temp, as.data.frame(xx), timefix = timefix), # (!) Edited here
                    times = cens.times, extend = TRUE)$surv
       gg <- rbind(1, g)
     } else {
-      g <- summary(survfit(Surv(y[, 1], y[, 2] == 0) ~ 1, timefix = timefix))$surv
+      g <- summary(survfit(Surv(y[, 1], y[, 2] == 0) ~ 1, timefix = timefix))$surv # (!) Edited here
       gg <- matrix(rep(c(1, g), length(itimes)),
                    nrow = length(g) + 1)
     }

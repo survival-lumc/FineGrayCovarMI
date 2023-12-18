@@ -206,3 +206,135 @@ compute_true_cuminc <- function(t,
 
   return(res)
 }
+
+
+# New version -------------------------------------------------------------
+
+
+# Based on https://github.com/sambrilleman/simsurv/blob/master/R/simsurv.R
+# For 15 points
+get_gk_points <- function() {
+  list(
+    "gk_xi" = c(
+      -0.991455371120812639207,
+      -0.949107912342758524526,
+      -0.86486442335976907279,
+      -0.7415311855993944398639,
+      -0.5860872354676911302941,
+      -0.4058451513773971669066,
+      -0.2077849550078984676007,
+      0,
+      0.2077849550078984676007,
+      0.405845151377397166907,
+      0.5860872354676911302941,
+      0.741531185599394439864,
+      0.86486442335976907279,
+      0.9491079123427585245262,
+      0.991455371120812639207
+    ),
+    "gk_wi" = c(
+      0.0229353220105292249637,
+      0.063092092629978553291,
+      0.10479001032225018384,
+      0.140653259715525918745,
+      0.1690047266392679028266,
+      0.1903505780647854099133,
+      0.204432940075298892414,
+      0.209482141084727828013,
+      0.204432940075298892414,
+      0.1903505780647854099133,
+      0.169004726639267902827,
+      0.140653259715525918745,
+      0.1047900103222501838399,
+      0.063092092629978553291,
+      0.0229353220105292249637
+    )
+  )
+}
+
+integrate_t_gk <- function(t, f, ...) {
+  knots <- get_gk_points()
+  wi_scaled <- outer(0.5 * t, knots$gk_wi)
+  xi_scaled <- outer(0.5 * t, knots$gk_xi)
+  f_xi <- f(xi_scaled + 0.5 * t, ...)
+  rowSums(f_xi * wi_scaled)
+}
+
+compute_true_new <- function(t,
+                             newdat,
+                             params,
+                             model_type = c("correct_FG", "misspec_FG")) {
+
+  # Make long version of newdata, and get model matrices with it
+  newdat_long <- cbind(
+    newdat[rep(seq_len(nrow(newdat)), each = length(pred_timepoints)), ],
+    pred_times = rep(pred_timepoints, times = nrow(newdat))
+  )
+  #rownames(newdat_long) <
+
+  browser()
+
+  # Prepare model matrices
+  predictor_formulas <- lapply(params, "[[", "formula")
+  modmats <- lapply(predictor_formulas, function(form) {
+    x <- model.matrix(form, data = newdat_long)
+    x[, !colnames(x) %in% "(Intercept)"]
+  })
+  x_cause1 <- modmats[["cause1"]]
+  x_cause2 <- modmats[["cause2"]]
+
+  # Get true values
+  model_type <- match.arg(model_type)
+
+  # # try new tings
+  prod <- function(t, cause, id) {
+    haz <- switch(
+      cause,
+      "1" = weibull_hazard(t, x_cause1[id, ], params[["cause1"]], type = "hazard"),
+      "2" = weibull_hazard(t, x_cause2[id, ], params[["cause2"]], type = "hazard")
+    )
+    cumhaz_cause1 <- weibull_hazard(t, x_cause1[id, ], params[["cause1"]], type = "cumulative")
+    cumhaz_cause2 <- weibull_hazard(t, x_cause2[id, ], params[["cause2"]], type = "cumulative")
+    haz * exp(-cumhaz_cause1 - cumhaz_cause2)
+  }
+
+  mapply(
+    FUN = function(t, id, ...) {
+      integrate(prod, lower = 0, upper = t, id = id, ...)$value
+    },
+    t = newdat_long$pred_times,
+    id = seq_len(nrow(newdat_long)),
+    MoreArgs = list(cause = 1)
+  )
+
+
+
+  cuminc <- if (model_type == "misspec_FG") {
+
+    # Closure
+    prod <- function(t, cause) {
+      haz <- switch(
+        cause,
+        "1" = weibull_hazard(t, x_cause1, params[["cause1"]], type = "hazard"),
+        "2" = weibull_hazard(t, x_cause2, params[["cause2"]], type = "hazard")
+      )
+      cumhaz_cause1 <- weibull_hazard(t, x_cause1, params[["cause1"]], type = "cumulative")
+      cumhaz_cause2 <- weibull_hazard(t, x_cause2, params[["cause2"]], type = "cumulative")
+      haz * exp(-cumhaz_cause1 - cumhaz_cause2)
+    }
+
+    integrate_t_gk(t = newdat_long$pred_times, f = prod, cause = 1)
+
+  } else if (model_type == "correct_FG"){
+
+    hr_sd <- drop(exp(x_cause1 %*% params[["cause1"]][["betas"]]))
+    p <- params[["cause1"]][["p"]]
+    shape <- params[["cause1"]][["base_shape"]]
+    rate <- params[["cause1"]][["base_rate"]]
+
+    # This is it
+    1 - (1 - p * (1 - exp(-rate * t^shape)))^hr_sd
+  }
+
+  cbind(newdat_long, "cuminc" = cuminc)
+}

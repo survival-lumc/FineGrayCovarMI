@@ -75,6 +75,10 @@ naniar::miss_var_summary(dat_sub)
 naniar::prop_complete_case(dat_sub)
 table(dat_sub$status_ci_adm)
 
+# For fun, scale age in decades per 100 years!
+#hist(dat_sub$age_allo1_decades)
+#dat_sub[, age_allo1_decades := age_allo1_decades / 10]
+# Only matters for vars with missing vals
 
 # On the censoring... -----------------------------------------------------
 
@@ -148,7 +152,7 @@ cens_imps <- kmi(
   data = data.frame(dat_sub),
   etype = status_ci_adm,
   failcode = 2, # non-relapse mortality is the outcome
-  nimp = 20 # make bigger later, set globally
+  nimp = 10 # make bigger later, set globally
 ) # If we are running once, why not bootstrap?
 
 # Checks with single imps, also to set-up imp methods
@@ -330,7 +334,7 @@ summ |>
     shape = method,
     logodds = TRUE,
     xtickbreaks = c(0.75, 1, 1.25, 1.5, 1.75),
-    xlim = c(0.5, 2.5),
+    #xlim = c(0.5, 2.5),
     xlab = "Hazard ratio (95% CI)"
   )
 

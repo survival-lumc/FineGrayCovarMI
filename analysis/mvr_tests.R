@@ -1,3 +1,4 @@
+# To present: meeting of 20/12??
 set.seed(488641)
 
 library(survival)

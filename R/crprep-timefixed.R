@@ -1,4 +1,4 @@
-# Timefix option added to crprep()
+# timefix option added to mstate::crprep(), similar issues to kmi()
 
 #' Function to create weighted data set for competing risks analyses
 #'
@@ -151,7 +151,7 @@
 crprep.timefixed <-
   function(Tstop, status, data, trans=1, cens=0, Tstart=0, id, strata,
            keep, shorten=TRUE, rm.na=TRUE, origin=0,
-           prec.factor=1000, ...) {
+           prec.factor=1000, timefix = FALSE, ...) {
 
     ## Extract Tstop data if given by column name
     if (!(is.numeric(Tstop))) {
@@ -316,10 +316,10 @@ crprep.timefixed <-
     prec <- .Machine$double.eps*prec.factor
 
     ## Calculate product-limit time-to-censoring distribution, "event" not included in case of ties
-    surv.cens <- survival::survfit(Surv(Tstart,Tstop+ifelse(status==cens,prec,0),status==cens)~strata.num, timefix = FALSE)
+    surv.cens <- survival::survfit(Surv(Tstart,Tstop+ifelse(status==cens,prec,0),status==cens)~strata.num, timefix = timefix)
 
     ## Calculate time to entry (left truncation) distribution at t-, use 2*prec in order to exclude censorings at same time
-    if(calc.trunc) surv.trunc <- survival::survfit(Surv(-Tstop,-(Tstart+2*prec),rep(1,n))~strata.num, timefix = FALSE)
+    if(calc.trunc) surv.trunc <- survival::survfit(Surv(-Tstop,-(Tstart+2*prec),rep(1,n))~strata.num, timefix = timefix)
     ## trunc.dist <- summary(surv.trunc)
     ## trunc.dist$time <- rev(-trunc.dist$time)-prec
     ## trunc.dist$surv <- c(rev(trunc.dist$surv)[-1],1)
