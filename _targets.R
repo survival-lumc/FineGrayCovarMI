@@ -138,9 +138,9 @@ simulation_pipeline_main <- tar_map(
   # Calculate true cumulative incidences for all reference patients
   tar_target(
     true_cuminc,
-    compute_true_cuminc( # Replace with newer function later (!)
+    compute_true_cuminc(
       t = pred_timepoints,
-      newdat = cbind.data.frame(X = reference_patients$X, Z = reference_patients$Z),
+      newdat = reference_patients,
       params = switch(
         failure_time_model_dyn,
         "correct_FG" = true_params_correct_FG,
@@ -148,14 +148,7 @@ simulation_pipeline_main <- tar_map(
       ),
       model_type = failure_time_model_dyn
     ) |>
-      cbind(
-        "failure_time_model" = failure_time_model_dyn,
-        "X" = reference_patients$X,
-        "Z" = reference_patients$Z,
-        "prob_space" = p
-      ),
-    # Works just like tidyr::crossing(failure_time_model, tar_read(reference_patients))
-    pattern = cross(reference_patients, failure_time_model_dyn)
+      cbind("failure_time_model" = failure_time_model_dyn, "prob_space" = p)
   )
 )
 
