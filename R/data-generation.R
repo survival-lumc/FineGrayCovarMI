@@ -204,8 +204,7 @@ add_cumhaz_to_dat <- function(dat) {
       statusvar = D,
       cause = 1,
       type = "subdist"
-    ), # Add also cause 1 indicator
-    D_star = as.numeric(D == 1)
+    )
   )]
 
   return(dat)

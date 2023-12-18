@@ -108,11 +108,7 @@ one_replication <- function(args_event_times,
   model_fun <- function(...) survival::coxph(..., x = TRUE)
 
   # Method 0: Full data before any missing data
-  mod_full <- model_fun(update(model_formula, . ~ X_obs + Z), data = dat)
-
-  # Method 0.5: Missing indicator
-  # mod_missing <- FGR(Hist(time, D) ~ X + Z, data = dat, cause = 1)
-  # (To-do at later stage)
+  mod_full <- model_fun(update(model_formula, . ~ X_obs + . - X), data = dat)
 
   # Method 1: CCA
   mod_CCA <- model_fun(model_formula, data = dat)
@@ -151,7 +147,7 @@ one_replication <- function(args_event_times,
   # Method 4: MICE with cumulative subdistribution hazard
   predmat_subdist <- predmat
   predmat_subdist[] <- 0
-  predmat_subdist["X", c("Z", "D_star", "H_subdist_cause1")] <- 1
+  predmat_subdist["X", c("Z", "newevent", "H_subdist_cause1")] <- 1
 
   mice_subdist <- mice(
     data = data.frame(dat),
@@ -165,9 +161,9 @@ one_replication <- function(args_event_times,
   # Method 5: SMC-FCS Fine-Gray
   dat[, D := as.numeric(as.character(D))] # Make indicator numeric
 
-  # When censoring times are known for the imputation,
+  # When subdistribution time is known for the imputation,
   # .. we can use smcfcs() directly with Surv(newtimes, newevent)
-  smcfcs_finegray <- if (args_event_times$censoring_type == "curvy_uniform") {
+  smcfcs_finegray <- if (args_event_times$censoring_type != "exponential") {
     smcfcs(
       originaldata = data.frame(dat),
       smformula = deparse1(update(form_rhs, Surv(newtimes, newevent) ~ .)),
