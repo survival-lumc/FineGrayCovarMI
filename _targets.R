@@ -120,7 +120,7 @@ simulation_pipeline_main <- tar_map(
           "misspec_FG" = params_weibull_lfps
         )
       ),
-      args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "Z")),
+      args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "1.5 * Z")),
       args_imputations = list(m = num_imputations, iters = num_cycles, rjlimit = 1000),
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
