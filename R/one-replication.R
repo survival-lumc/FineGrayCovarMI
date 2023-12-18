@@ -1,25 +1,13 @@
 # Extract coefficients + baseline cumulative incidence at desired time points
-# .. for a coxph or FGR object
 extract_mod_essentials <- function(fit,
                                    timepoints) {
 
-  if (inherits(fit, "FGR")) {
-    predictors <- all.vars(delete.response(fit$terms))
-    # This still works even if there are factors, and you do not know their baseline level
-    newdat_baseline <- data.frame(matrix(data = 0L, ncol = length(predictors)))
-    colnames(newdat_baseline) <- predictors
-    base_cuminc <- drop(predict(fit, newdata = newdat_baseline, times = timepoints))
-    coefs <- fit$crrFit$coef
-  } else {
-    # For a coxph object (when censoring time is known): predictCox() gives baseline by default
-    base_cuminc <- 1 - predictCox(fit, times = timepoints, centered = FALSE)$survival
-    # When timepoint > max time in data, predictCox gives NA, just give max cuminc instead
-    if (anyNA(base_cuminc)) base_cuminc[is.na(base_cuminc)] <- max(base_cuminc, na.rm = TRUE)
-    coefs <- fit$coefficients
-  }
+  # For a coxph object, predictCox() gives baseline by default
+  base_cuminc <- 1 - predictCox(fit, times = timepoints, centered = FALSE)$survival
+  # When timepoint > max time in data, predictCox gives NA, just give max cuminc instead
+  if (anyNA(base_cuminc)) base_cuminc[is.na(base_cuminc)] <- max(base_cuminc, na.rm = TRUE)
+  coefs <- fit$coefficients
 
-  # Note: could return crr object? Not very heavy, only 10% of total FGR size
-  # For now, stick to this (since cleaner)
   essentials <- data.table(
     "time" = timepoints,
     "base_cuminc" = base_cuminc,
@@ -29,12 +17,6 @@ extract_mod_essentials <- function(fit,
   return(essentials)
 }
 
-# Add simple tweaked versions of broom::tidy() and mice::pool() so it
-# plays just fine just FGR (by using the underlying crrFit object)
-tidy_tweaked <- function(x, ...) {
-  if (inherits(x, "FGR")) x <- x$crrFit
-  broom::tidy(x, ...)
-}
 
 # One replication of simulation study
 one_replication <- function(args_event_times,
@@ -200,24 +182,14 @@ one_replication <- function(args_event_times,
     list(lapply(imp_dats[[1]], function(imp_dat) model_fun(model_formula, data = imp_dat)))
   ), by = method]
 
-  summaries_impdats <- nested_impdats[, .(
-    coefs_summary = list(tidy(pool(mods[[1]]), conf.int = TRUE))#,
-    #preds_summary = list(
-    #  rbindlist(
-    #    lapply(mods[[1]], extract_mod_essentials, timepoints = pred_times),
-    #    idcol = "imp"
-    #  )
-    #)
-  ), by = method]
-
   # Create summaries (= pooled coefficients, and the prediction 'essentials')
   summaries_impdats <- nested_impdats[, .(
-    coefs_summary = list(tidy(pool_tweaked(mods[[1]]), conf.int = TRUE)),
+    coefs_summary = list(tidy(pool(mods[[1]]), conf.int = TRUE)),
     preds_summary = list(
-      rbindlist(
-        lapply(mods[[1]], extract_mod_essentials, timepoints = pred_times),
-        idcol = "imp"
-      )
+     rbindlist(
+       lapply(mods[[1]], extract_mod_essentials, timepoints = pred_times),
+       idcol = "imp"
+     )
     )
   ), by = method]
 
@@ -228,12 +200,12 @@ one_replication <- function(args_event_times,
   method_summaries <- rbind(
     data.table(
       method = "full",
-      coefs_summary = list(tidy_tweaked(mod_full, conf.int = TRUE)),
+      coefs_summary = list(tidy(mod_full, conf.int = TRUE)),
       preds_summary = list(extract_mod_essentials(mod_full, pred_times))
     ),
     data.table(
       method = "CCA",
-      coefs_summary = list(tidy_tweaked(mod_CCA, conf.int = TRUE)),
+      coefs_summary = list(tidy(mod_CCA, conf.int = TRUE)),
       preds_summary = list(extract_mod_essentials(mod_CCA, pred_times))
     ),
     summaries_impdats
@@ -241,7 +213,7 @@ one_replication <- function(args_event_times,
 
   # Keep essential columns (remove MI-specific cols), and bind together with true betas
   # ("true" are the least-false parameters in the misspecified scenarios)
-  essential_cols <- colnames(tidy_tweaked(mod_CCA, conf.int = TRUE))
+  essential_cols <- colnames(tidy(mod_CCA, conf.int = TRUE))
   method_summaries[, coefs_summary := .(
     list(cbind(coefs_summary[[1]][, essential_cols], "true" = extra_args$true_betas))
   ), by = method]
