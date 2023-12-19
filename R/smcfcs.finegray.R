@@ -6,7 +6,12 @@ smcfcs.finegray <- function(originaldata,
                             m = 5,
                             numit = 10,
                             rjlimit = 5000,
-                            #kmi_args = NULL,
+                            kmi_args = list(
+                              "formula" = ~ 1,
+                              "bootstrap" = FALSE,
+                              "nboot" = 10,
+                              "epsilon" = 1
+                            ),
                             ...) {
 
   # Locate/sort out outcome variables
@@ -50,28 +55,29 @@ smcfcs.finegray <- function(originaldata,
       method = meths_smcfcs,
       rjlimit = rjlimit,
       numit = numit,
-      m = m
+      m = m,
+      ...
     )
 
   } else { # Need to multiply impute censoring times!
 
     # Prepare kmi() formula (for now default Kaplan-Meier imputation)
     lhs_kmi <- paste0("Surv(", paste(outcome_vars, collapse = ", "), " != 0)")
-    form_kmi <- reformulate(termlabels = c("1"), response = lhs_kmi)
-
-    # Add option to bootstrap? See section 5.3.2 Beyersmann book
-
-    # Impute missing censoring times in first loop
-    kmi_imps <- do.call(
-      kmi, # We use the local timefixed version (in smcfcs package: edit survfit as globally new fun with timefix = FALSE)
-      args = list(
+    form_kmi <- as.formula(paste0(lhs_kmi, deparse1(kmi_args$formula)))
+    args_cens_imps <- c(
+      list(
         "formula" = form_kmi,
         "data" = originaldata,
         "etype" = as.symbol(status_var_name),
         "failcode" = cause,
         "nimp" = m
-      )
+      ),
+      kmi_args[-1] # remove formula
     )
+
+    # Impute missing censoring times in first loop
+    # We use the local timefixed version (in smcfcs package: edit survfit as globally new fun with timefix = FALSE)
+    kmi_imps <- do.call(kmi, args = args_cens_imps)
 
     # And now impute the covariates
     imps_loop <- lapply(kmi_imps$imputed.data, function(new_outcomes) {
@@ -86,7 +92,8 @@ smcfcs.finegray <- function(originaldata,
         method = meths_smcfcs,
         rjlimit = rjlimit,
         numit = numit,
-        m = 1L # one imputation per kmi dataset
+        m = 1L, # one imputation per kmi dataset
+        ...
       )
 
       return(smcfcs_modif)

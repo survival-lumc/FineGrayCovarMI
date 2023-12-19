@@ -5,7 +5,8 @@ extract_mod_essentials <- function(fit,
   # For a coxph object, predictCox() gives baseline by default
   base_cuminc <- 1 - predictCox(fit, times = timepoints, centered = FALSE)$survival
   # When timepoint > max time in data, predictCox gives NA, just give max cuminc instead
-  if (anyNA(base_cuminc)) base_cuminc[is.na(base_cuminc)] <- max(base_cuminc, na.rm = TRUE)
+  #if (anyNA(base_cuminc)) base_cuminc[is.na(base_cuminc)] <- max(base_cuminc, na.rm = TRUE)
+  # Don't do the NA thing?
   coefs <- fit$coefficients
 
   essentials <- data.table(

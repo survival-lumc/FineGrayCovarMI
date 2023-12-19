@@ -25,7 +25,7 @@ add_event_times <- function(dat,
                             mechanism = c("correct_FG", "misspec_FG"),
                             params,
                             censoring_params = list(
-                              "exponential" = 0.49,
+                              "exponential" = "0.49", # here is an expression
                               "curvy_uniform" = c(0.5, 5),
                               "curvyness" = 0.29
                             ),
@@ -99,7 +99,10 @@ add_event_times <- function(dat,
     # Draw censoring times
     dat[, cens_time := switch(
       censoring_type,
-      exponential = rexp(.N, rate = censoring_params$exponential),
+      exponential = rexp(
+        .N,
+        rate = eval(parse(text = censoring_params$exponential), envir = .SD)
+      ),
       curvy_uniform = (censoring_params$curvy_uniform[2] - censoring_params$curvy_uniform[1]) *
         runif(.N)^(1 / censoring_params$curvyness) + censoring_params$curvy_uniform[1]
     )]

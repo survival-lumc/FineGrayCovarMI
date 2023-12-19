@@ -29,9 +29,9 @@ dynamic_settings <- list(
 
 # Other global settings:
 pred_timepoints <- c(0.001, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
-num_imputations <- 30
-num_cycles <- 20
-num_replications <- 500
+num_imputations <- 10#30
+num_cycles <- 15#20
+num_replications <- 10 #500
 num_batches <- 1
 reps_per_batch <- ceiling(num_replications / num_batches)
 size_data_lfps <- 1e6 # size of dataset to estimate least-false parameters
@@ -138,7 +138,7 @@ simulation_pipeline_main <- tar_map(
   # Calculate true cumulative incidences for all reference patients
   tar_target(
     true_cuminc,
-    compute_true_cuminc(
+    compute_true(
       t = pred_timepoints,
       newdat = reference_patients,
       params = switch(
@@ -148,7 +148,8 @@ simulation_pipeline_main <- tar_map(
       ),
       model_type = failure_time_model_dyn
     ) |>
-      cbind("failure_time_model" = failure_time_model_dyn, "prob_space" = p)
+      cbind("failure_time_model" = failure_time_model_dyn, "prob_space" = p),
+    pattern = map(failure_time_model_dyn)
   )
 )
 
@@ -201,7 +202,7 @@ simulations_censoring <- tar_map(
         ),
         censoring_params = list("exponential" = cens_rate)
       ),
-      args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "Z")),
+      args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "1.5 * Z")),
       args_imputations = list(m = num_imputations, iters = num_cycles, rjlimit = 1000),
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
@@ -225,44 +226,44 @@ simulations_censoring <- tar_map(
 # largest differences between smcfcs and mice. To check: use pred mean matching here?
 
 # MCSE will be much smaller, so we can do probably do just half the reps
-stress_test <- tar_map_rep(
-  name = big_betas,
-  combine = TRUE,
-  values = data.frame("censoring_type" = c("none", "exponential")), # for both no, and exponential censoring
-  command = one_replication(
-    args_event_times = list(
-      mechanism = "correct_FG",
-      censoring_type = censoring_type,
-      censoring_params = list("exponential" = 0.25), # to get 30% cens
-      params = list(
-        "cause1" = list(
-          "formula" = ~ X + Z,
-          "betas" = c(1, 1),
-          "p" = 0.65,
-          "base_rate" = 1,
-          "base_shape" = 0.75
-        ),
-        "cause2" = list(
-          "formula" = ~ X + Z,
-          "betas" = c(1, 1),
-          "base_rate" = 1,
-          "base_shape" = 0.75
-        )
-      )
-    ),
-    args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "Z")),
-    args_imputations = list(m = num_imputations, iters = num_cycles, rjlimit = 10000), # Large rjlimit to avoid warnings
-    args_predictions = list(timepoints = pred_timepoints),
-    args_covariates = list("X_type" = "normal"),
-    true_betas = c(1, 1)
-  ) |>
-    cbind(
-      prob_space = 0.65,
-      failure_time_model = "correct_FG"
-    ),
-  reps = 25, # 100 test replications
-  batches = 4
-)
+# stress_test <- tar_map_rep(
+#   name = big_betas,
+#   combine = TRUE,
+#   values = data.frame("censoring_type" = c("none", "exponential")), # for both no, and exponential censoring
+#   command = one_replication(
+#     args_event_times = list(
+#       mechanism = "correct_FG",
+#       censoring_type = censoring_type,
+#       censoring_params = list("exponential" = 0.25), # to get 30% cens
+#       params = list(
+#         "cause1" = list(
+#           "formula" = ~ X + Z,
+#           "betas" = c(1, 1),
+#           "p" = 0.65,
+#           "base_rate" = 1,
+#           "base_shape" = 0.75
+#         ),
+#         "cause2" = list(
+#           "formula" = ~ X + Z,
+#           "betas" = c(1, 1),
+#           "base_rate" = 1,
+#           "base_shape" = 0.75
+#         )
+#       )
+#     ),
+#     args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "1.5 * Z")),
+#     args_imputations = list(m = num_imputations, iters = num_cycles, rjlimit = 10000), # Large rjlimit to avoid warnings
+#     args_predictions = list(timepoints = pred_timepoints),
+#     args_covariates = list("X_type" = "normal"),
+#     true_betas = c(1, 1)
+#   ) |>
+#     cbind(
+#       prob_space = 0.65,
+#       failure_time_model = "correct_FG"
+#     ),
+#   reps = 25, # 100 test replications
+#   batches = 4
+# )
 
 
 # Here we bring together all the simulation scenarios
@@ -276,31 +277,26 @@ list(
     command = dplyr::bind_rows(!!!.x)
   ),
   tar_combine(
-    true_cuminc_all,
-    simulation_pipeline_main[["true_cuminc"]],
-    command = dplyr::bind_rows(!!!.x)
-  ),
-  tar_combine(
     simulations_cens,
     simulations_censoring[["simreps_cens"]],
     command = dplyr::bind_rows(!!!.x)
-  ),
-  stress_test,
+  )#,
+  #stress_test,
   # In reporting: forget about admin cens; just mention in-text
 
   # Pool predictions just for main simulations?
-  tar_target(
-    pooled_preds_main,
-    pool_nested_predictions(
-      nested_df = simulations_main,
-      new_pat = c(X = reference_patients$X, Z = reference_patients$Z)
-    ) |>
-      cbind(
-        "X" = reference_patients$X,
-        "Z" = reference_patients$Z
-      ),
-    pattern = map(reference_patients)
-  )
+  # tar_target(
+  #   pooled_preds_main,
+  #   pool_nested_predictions(
+  #     nested_df = simulations_main,
+  #     new_pat = c(X = reference_patients$X, Z = reference_patients$Z)
+  #   ) |>
+  #     cbind(
+  #       "X" = reference_patients$X,
+  #       "Z" = reference_patients$Z
+  #     ),
+  #   pattern = map(reference_patients)
+  # )
 )
 
 # To-do:
