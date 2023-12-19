@@ -31,7 +31,7 @@ dynamic_settings <- list(
 pred_timepoints <- c(0.001, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
 num_imputations <- 10#30
 num_cycles <- 15#20
-num_replications <- 10 #500
+num_replications <- 100 #500
 num_batches <- 1
 reps_per_batch <- ceiling(num_replications / num_batches)
 size_data_lfps <- 1e6 # size of dataset to estimate least-false parameters
