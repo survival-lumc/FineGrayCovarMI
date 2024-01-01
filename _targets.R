@@ -30,7 +30,7 @@ dynamic_settings <- list(
 # Other global settings:
 pred_timepoints <- c(0.001, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
 num_imputations <- 2#30
-num_cycles <- 5 #20
+num_cycles <- 2 #20
 num_replications <- 2 #500
 num_batches <- 1
 reps_per_batch <- ceiling(num_replications / num_batches)
@@ -158,11 +158,7 @@ simulation_pipeline_main <- tar_map(
 list(
   dynamic_settings,
   simulation_pipeline_main,
-  tar_combine(
-    simulations_main,
-    simulation_pipeline_main[["simreps"]],
-    command = dplyr::bind_rows(!!!.x)
-  )
+  tar_combine(simulations_main, simulation_pipeline_main[["simreps"]])
   # In reporting: forget about admin cens; just mention in-text re. SEs
 
   # Pool predictions just for main simulations?
