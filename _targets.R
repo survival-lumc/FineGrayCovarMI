@@ -156,19 +156,21 @@ simulation_pipeline_main <- tar_map(
 applied_imp_settings <- list(
   num_imputations = 10,
   num_cycles = 2,
+  num_batches = 10,
   rjlimit = 10000,
   rhs_cens = "year_allo1",
   cause = 2
 )
 
+# Reminder total number is batches/reps
 applied_example <- list(
   tar_target(applied_dat_raw, data.table(readRDS("data-raw//dat_clean.rds"))),
   tar_target(applied_dat, process_applied_dat(applied_dat_raw)),
   tar_rep(
     applied_impdats,
     one_imputation_applied_dat(dat_processed = applied_dat, imp_settings = applied_imp_settings),
-    reps = applied_imp_settings$num_imputations,
-    batches = 10, # for parallelizing
+    reps = ceiling(applied_imp_settings$num_imputations / applied_imp_settings$num_batches),
+    batches = applied_imp_settings$num_batches, # for parallelizing
     format = "fst"
   )
 )
