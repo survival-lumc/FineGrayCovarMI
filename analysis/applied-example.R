@@ -5,7 +5,6 @@ library(mice)
 library(future)
 library(future.apply)
 library(riskRegression) # for predictRisk()
-library(kmi)
 library(ggplot2)
 library(patchwork)
 
@@ -147,7 +146,7 @@ points(dat_sub$time_ci_adm, dat_sub$H1)
 dat_sub$year_allo1 <- as.factor(dat_sub$year_allo1)
 
 # Impute censoring times!!
-cens_imps <- kmi(
+cens_imps <- kmi::kmi(
   formula = Surv(time_ci_adm, status_ci_adm != 0) ~ year_allo1,
   data = data.frame(dat_sub),
   etype = status_ci_adm,

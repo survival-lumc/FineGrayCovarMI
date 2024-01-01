@@ -35,8 +35,15 @@ coefs_main[, censoring_type := factor(
   levels = c("none", "exponential", "curvy_uniform")
 )]
 
-coefs_main[failure_time_model == "correct_FG"] |>
+coefs_main[failure_time_model == "misspec_FG"] |>
   ggplot(aes(method, estimate - true)) +
+  geom_boxplot(aes(fill = method)) +
+  #geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
+  facet_grid(prob_space ~ term * censoring_type) +
+  geom_hline(yintercept = 0)
+
+coefs_main[failure_time_model == "correct_FG"] |>
+  ggplot(aes(method, std.error)) +
   geom_boxplot(aes(fill = method)) +
   #geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
   facet_grid(prob_space ~ term * censoring_type) +
