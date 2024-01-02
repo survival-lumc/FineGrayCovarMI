@@ -163,10 +163,11 @@ one_imputation_applied_dat <- function(dat_processed,
 
   # Bind all imputed datasets, could technically nest this
   impdats <- rbind(
-    cbind(complete(imps_mice_subdist, "all")[[1]], "method" = "MI subdist"),
-    cbind(complete(imps_mice_csh, "all")[[1]], "method" = "MICE CSH"),
-    cbind(imps_smcfcs_csh$impDatasets[[1]], "method" = "SMC-FCS CSH"),
-    cbind(imps_smcfcs_subdist$impDatasets[[1]], "method" = "SMC-FCS subdist")
+    cbind(dat_to_impute, "method" = "Compl. cases"),
+    cbind(complete(imps_mice_subdist, "all")[[1]], "method" = "MICE subdist"),
+    cbind(complete(imps_mice_csh, "all")[[1]], "method" = "MICE cause-spec"),
+    cbind(imps_smcfcs_csh$impDatasets[[1]], "method" = "SMC-FCS cause-spec"),
+    cbind(imps_smcfcs_subdist$impDatasets[[1]], "method" = "SMC-FCS Fine-Gray")
   )
 
   return(data.table(impdats))
