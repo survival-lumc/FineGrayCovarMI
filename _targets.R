@@ -29,9 +29,9 @@ dynamic_settings <- list(
 
 # Other global settings:
 pred_timepoints <- c(0.001, 0.25, 0.5, 0.75, seq(1, 5, by = 0.5))
-num_imputations <- 2#30
-num_cycles <- 2 #20
-num_replications <- 2 #500
+num_imputations <- 30
+num_cycles <- 20
+num_replications <- 500
 num_batches <- 1
 reps_per_batch <- ceiling(num_replications / num_batches)
 size_data_lfps <- 1e6 # size of dataset to estimate least-false parameters
@@ -61,25 +61,19 @@ simulation_pipeline_main <- tar_map(
       )
     )
   ),
-  # Generate large dataset (which we keep as a target so that we can show
-  # non-param cumincs later)
-  tar_target(
-    largedat_correct_FG,
-    generate_dataset(
-      n = size_data_lfps,
-      args_event_times = list(
-        mechanism = "correct_FG",
-        params = true_params_correct_FG,
-        censoring_type = "none"
-      ),
-      args_missingness = list(mech_params = list("prob_missing" = 0))
-    )
-  ),
-  # Estimate least-false Weibull parameters, for use in the misspecified FG scenario
+  # Generate large dataset + estimate least-false Weibull parameters, for use in the misspecified FG scenario
   tar_target(
     params_weibull_lfps,
     recover_weibull_lfps(
-      large_dat = largedat_correct_FG,
+      large_dat = generate_dataset(
+        n = size_data_lfps,
+        args_event_times = list(
+          mechanism = "correct_FG",
+          params = true_params_correct_FG,
+          censoring_type = "none"
+        ),
+        args_missingness = list(mech_params = list("prob_missing" = 0))
+      ),
       params_correct_FG = true_params_correct_FG
     )
   ),
@@ -154,8 +148,8 @@ simulation_pipeline_main <- tar_map(
 )
 
 applied_imp_settings <- list(
-  num_imputations = 10,
-  num_cycles = 2,
+  num_imputations = 100,
+  num_cycles = 20,
   num_batches = 10,
   rjlimit = 10000,
   rhs_cens = "year_allo1",

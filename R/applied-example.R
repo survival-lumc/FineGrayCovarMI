@@ -169,5 +169,5 @@ one_imputation_applied_dat <- function(dat_processed,
     cbind(imps_smcfcs_subdist$impDatasets[[1]], "method" = "SMC-FCS subdist")
   )
 
-  return(impdats)
+  return(data.table(impdats))
 }
