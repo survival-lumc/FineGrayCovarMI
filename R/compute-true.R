@@ -34,7 +34,7 @@ compute_true <- function(t,
   model_type <- match.arg(model_type)
 
   # True values depend on DGM
-  cuminc <- if (model_type == "misspec_FG") {
+  if (model_type == "misspec_FG") {
 
     prod <- function(t, cause, id) {
       haz <- switch(
@@ -64,7 +64,7 @@ compute_true <- function(t,
     subdens_1 <- haz_cs1 * (1 - F1 - F2)
     subdens_2 <- haz_cs2 * (1 - F1 - F2)
     haz_subdist1 <- subdens_1 / (1 - F1)
-    haz_subdist2 <- subdens_1 / (1 - F1)
+    haz_subdist2 <- subdens_2 / (1 - F2)
 
   } else if (model_type == "correct_FG"){
 
@@ -92,7 +92,7 @@ compute_true <- function(t,
 
     # Compute all hazards
     haz_subdist1 <- subdens_1 / (1 - F1)
-    haz_subdist2 <- subdens_2 / (1 - F1)
+    haz_subdist2 <- subdens_2 / (1 - F2)
     haz_cs1 <- subdens_1 / (1 - F1 - F2)
     haz_cs2 <- subdens_2 / (1 - F1 - F2)
   }
