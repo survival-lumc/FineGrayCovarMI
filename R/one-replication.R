@@ -49,7 +49,7 @@ one_replication <- function(args_event_times,
   # (we are comparing imputation methods, so this is okay)
   # - We do so consistently with kmi names
   if (args_event_times$censoring_type == "none") {
-    max_ev1_time <- dat[D == 1, .(time = max(time))][["time"]]
+    max_ev1_time <- max(dat[D == 1]$time)
     eps <- 0.1
     dat[, ':=' (
       newtimes = ifelse(D == 2, max_ev1_time + eps, time),

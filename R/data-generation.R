@@ -201,12 +201,6 @@ add_cumhaz_to_dat <- function(dat) {
       statusvar = D,
       cause = 2,
       type = "cause_spec"
-    ),
-    H_subdist_cause1 = compute_marginal_cumhaz(
-      timevar = time,
-      statusvar = D,
-      cause = 1,
-      type = "subdist"
     )
   )]
 
