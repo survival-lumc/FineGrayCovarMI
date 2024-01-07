@@ -18,7 +18,7 @@ plan(callr)
 # over that parameter separately
 prob_space_domin <- c("low_p" = 0.15, "high_p" = 0.65)
 failure_time_model <- c("correct_FG", "misspec_FG")
-censoring_type <- c("none", "exponential", "curvy_uniform")
+censoring_type <- c("none", "exponential", "admin")
 
 # We set some of the varying parameters as targets, so we can use dynamic branching later
 dynamic_settings <- list(
@@ -115,7 +115,12 @@ simulation_pipeline_main <- tar_map(
         )
       ),
       args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "1.5 * Z")),
-      args_imputations = list(m = num_imputations, iters = num_cycles, rjlimit = 1000),
+      args_imputations = list(
+        m = num_imputations,
+        iters = num_cycles,
+        rjlimit = 1000,
+        rhs_kmi = "1"
+      ),
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
         failure_time_model,
