@@ -24,11 +24,7 @@ generate_direct_times <- function(U, x, params) {
 add_event_times <- function(dat,
                             mechanism = c("correct_FG", "misspec_FG"),
                             params,
-                            censoring_params = list(
-                              "exponential" = "0.49"#, # here is an expression
-                              #"curvy_uniform" = c(0.5, 5),
-                              #"curvyness" = 0.29
-                            ),
+                            censoring_params = list("exponential" = "0.49"),
                             censoring_type = c("none", "exponential", "admin")) {
 
   # Match arguments
@@ -161,14 +157,15 @@ compute_marginal_cumhaz <- function(timevar,
       data = cbind.data.frame("time" = timevar, "status" = as.numeric(statusvar == cause))
     )
   } else if (type == "subdist") {
+    # This is the weighted estimator of the marginal cumulative subdistribution hazard
     long_dat <- crprep.timefixed(
       Tstop = "time",
       status = "status",
       data = cbind.data.frame("time" = timevar, "status" = statusvar),
-      trans = cause # Check that this is general
+      trans = cause
     )
     mod <- coxph(
-      Surv(Tstart, Tstop, status == 1) ~ 1, # should be status == cause?
+      Surv(Tstart, Tstop, status == cause) ~ 1,
       data = long_dat,
       weights = weight.cens,
       control = survival::coxph.control(timefix = timefix)

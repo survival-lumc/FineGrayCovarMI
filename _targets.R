@@ -179,8 +179,11 @@ applied_example <- list(
 list(
   dynamic_settings,
   simulation_pipeline_main,
-  tar_combine(simulations_main, simulation_pipeline_main[["simreps"]]),
-  applied_example
+  tar_combine(simulations_main, simulation_pipeline_main[["simreps"]])#,
+
+  #applied_example
+
+
   # In reporting: forget about admin cens; just mention in-text re. SEs
 
   # Pool predictions just for main simulations?
