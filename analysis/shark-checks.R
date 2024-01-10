@@ -3,6 +3,7 @@
 
 # Overview main sims ------------------------------------------------------
 
+
 theme_set(
   theme_light(base_size = 16) + #, base_family = "Roboto Condensed") +
     theme(
@@ -25,48 +26,76 @@ all_labels <- labeller(
   failure_time_model = failure_model_labels
 )
 
+# Read-in *the* df
+simulations_main <- tar_read(simulations_main)
+
+# Unnest
+reps_per_scen <- simulations_main[, .(
+  coefs = list(rbindlist(coefs_summary, idcol = "rep_id"))
+), by = c("prob_space","failure_time_model", "censoring_type", "method")]
+
 coefs_main <- rbindlist(
   with(
-    tar_read(simulations_main),
+    reps_per_scen,
     Map(
-      cbind,
+      f = cbind,
       method = method,
-      coefs_summary,
+      coefs,
       prob_space = prob_space,
       failure_time_model = failure_time_model,
-      censoring_type = censoring_type,
-      rep = tar_rep
+      censoring_type = censoring_type
     )
   ), fill = TRUE
 )
 
+# Some checks
+coefs_main[, .(.N), by = c(
+  "prob_space",
+  "failure_time_model",
+  "censoring_type",
+  "method",
+  "term"
+)]
 
 # Do some cleaning
-coefs_main[, term := ifelse(grepl(pattern = "^X", term), "X", as.character(term))]
-coefs_main[, method := factor(
-  method,
-  levels = c("full", "CCA", "mice_comp", "mice_subdist", "smcfcs_comp", "smcfcs_finegray"),
-  labels = c(
-    "Full data",
-    "Compl. cases",
-    "MICE cause-spec",
-    "MICE subdist",
-    "SMC-FCS cause-spec",
-    "SMC-FCS Fine-Gray"
+coefs_main[, ':=' (
+  term = ifelse(grepl(pattern = "^X", term), "X", as.character(term)),
+  censoring_type = factor(censoring_type, levels = c("none", "exponential", "admin")),
+  method = factor(
+    method,
+    levels = c("full", "CCA", "mice_comp", "mice_subdist", "smcfcs_comp", "smcfcs_finegray"),
+    labels = c(
+      "Full data",
+      "Compl. cases",
+      "MICE cause-spec",
+      "MICE subdist",
+      "SMC-FCS cause-spec",
+      "SMC-FCS Fine-Gray"
+    )
   )
 )]
 
-coefs_main[, censoring_type := factor(
-  censoring_type,
-  levels = c("none", "exponential", "admin")
-)]
 
-coefs_main[term == "X"][, .(.N), by = c("failure_time_model",
-                                        "censoring_type",
-                                        "prob_space",
-                                        "method")]
+# Performance measures in one go ------------------------------------------
 
-# Bias
+
+sim_summ <- rsimsum::multisimsum(
+  data = coefs_main,
+  par = "term",
+  estvarname = "estimate",
+  se = "std.error",
+  true = "true",
+  methodvar = "method",
+  ref = "Full data",
+  ci.limits = c("conf.low", "conf.high"),
+  x = TRUE,
+  by = c("censoring_type", "failure_time_model", "prob_space")
+)
+
+
+# Bias --------------------------------------------------------------------
+
+
 coefs_main[term == "X" & !(method %in% c("Full data", "Compl. cases"))] |>
   ggplot(aes(method, 100 * (estimate - true) / true)) +
   geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
@@ -95,49 +124,17 @@ coefs_main[term == "X" & !(method %in% c("Full data", "Compl. cases"))] |>
   labs(x = "Method", y = "Relative bias %")
 
 
-coefs_main[term == "X"] |>
-  ggplot(aes(method, estimate - true)) +
-  geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
-  facet_grid(
-    prob_space ~ failure_time_model * censoring_type,
-    scales = "free_y",
-    labeller = all_labels
-  ) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "none"
-  ) +
-  #scale_y_continuous(
-  #  minor_breaks = NULL,
-  #  breaks = c(0, 10, 25, 50, -10, -25, -50)
-  #) +
-  geom_hline(aes(yintercept = 0), linetype = "dashed", linewidth = 1) +
-  stat_summary(
-    fun = mean,
-    fun.min = mean,
-    fun.max = mean,
-    geom = "crossbar",
-    linewidth = 0.75,
-    col = "darkred"
-  ) +
-  scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  labs(x = "Method", y = "Bias")
-
-
-coefs_main[term == "X"] |> # & !(method %in% "Full data")] |>
+coefs_main[term == "X" & !(method %in% c("Full data", "Compl. cases"))] |>
   ggplot(aes(method, std.error)) +
   geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
   facet_grid(
-    #prob_space ~ failure_time_model * censoring_type,
     prob_space ~ failure_time_model * censoring_type,
-    #scales = "free_y"
     labeller = all_labels
   ) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
     legend.position = "none"
   ) +
-  #geom_hline(aes(yintercept = true), linetype = "dashed", linewidth = 1) +
   stat_summary(
     fun = mean,
     fun.min = mean,
@@ -146,22 +143,63 @@ coefs_main[term == "X"] |> # & !(method %in% "Full data")] |>
     linewidth = 0.75,
     col = "darkred"
   ) +
+  stat_summary(
+    data = subset(
+      sim_summ$summ,
+      stat == "empse" & term == "X" & !(method %in% c("Full data", "Compl. cases"))
+    ),
+    aes(y = est),
+    fun = mean,
+    fun.min = mean,
+    fun.max = mean,
+    geom = "crossbar",
+    linewidth = 0.5,
+    col = "blue"
+  ) +
   scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  labs(x = "Method", y = "Relative bias %")
+  labs(x = "Method", y = "Standard error")
 
-# Check custom command
-sim_summ <- rsimsum::multisimsum(
-  data = coefs_main,
-  par = "term",
-  estvarname = "estimate",
-  se = "std.error",
-  true = "true",
-  methodvar = "method",
-  ref = "Full data",
-  ci.limits = c("conf.low", "conf.high"),
-  x = TRUE,
-  by = c("censoring_type", "failure_time_model", "prob_space")
-)
+
+
+# Coverage ----------------------------------------------------------------
+
+
+crit <- qnorm((1 - 0.95) / 2, lower.tail = FALSE)
+
+# Coverage
+data.table(sim_summ$summ)[stat == "cover" & term == "X"] |>
+  ggplot(aes(method, est, col = method)) +
+  geom_linerange(aes(xmin = method, xmax = method, ymin = 0.6, ymax = est)) +
+  geom_point(size = 3) +
+  geom_point(
+    aes(y = est + crit * mcse),
+    shape = 41,
+    size = 2.5
+  ) +
+  geom_point(
+    aes(y = est - crit * mcse),
+    shape = 40,
+    size = 2.5
+  ) +
+  scale_x_discrete(limits = rev) +
+  facet_grid(
+    prob_space ~ failure_time_model * censoring_type,
+    labeller = all_labels,
+    scales = "free_y"
+  )  +
+  theme(
+    #axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none",
+    panel.grid.major.y = element_blank()
+  ) +
+  scale_color_manual(values = Manu::get_pal("Hoiho")) +
+  geom_hline(yintercept = 0.95, linetype = "dotted") +
+  coord_flip(ylim = c(0.65, 1.025)) +
+  labs(y = "Coverage (95% CI with MCSE)")
+
+
+# Zippers -----------------------------------------------------------------
+
 
 coefs_bis <- copy(coefs_main)
 coefs_bis[, ':=' (

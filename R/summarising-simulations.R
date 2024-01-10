@@ -6,7 +6,8 @@ pool_nested_predictions <- function(nested_df,
   # Collapse the nested data frame with necessary identifier
   unnested_df <- rbindlist(
     with(
-      nested_df,
+      tar_read(simulations_main),
+      #nested_df,
       Map(
         f = cbind,
         method = method,
@@ -15,8 +16,8 @@ pool_nested_predictions <- function(nested_df,
         failure_time_model = failure_time_model,
         censoring_type = censoring_type,
         rep_id = tar_rep,
-        batch_id = tar_batch,
-        ...
+        batch_id = tar_batch#,
+        #...
       )
     ),
     fill = TRUE
@@ -27,7 +28,7 @@ pool_nested_predictions <- function(nested_df,
 
   # To make prediction
   predict_nested_FG <- function(base_cuminc, coefs, new_pat) {
-    1 - (1 - base_cuminc)^exp(unlist(coefs) %*% new_pat)
+    1 - (1 - base_cuminc)^exp(coefs[[1]] %*% new_pat)
   }
 
   # Predict for a given patient
