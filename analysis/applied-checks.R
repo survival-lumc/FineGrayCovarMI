@@ -85,7 +85,7 @@ dat <- generate_dataset(
   n = 1e3,
   list(
     mechanism = "correct_FG",
-    params = tar_read(true_params_correct_FG_0.15),
+    params = tar_read(true_params_correct_FG_0.65),
     censoring_type = "exponential",
     censoring_params = list("exponential" = "0.49")
     #censoring_params = list("exponential" = "0.49 * exp(Z)")
@@ -145,7 +145,7 @@ p_subdist <- imp_dats_cens |>
   ggplot(aes(newtimes, H1_subdist)) +
   geom_step(aes(group = .imp), alpha = 0.75, col = "gray") +
   theme(legend.position = "none") +
-  coord_cartesian(ylim = c(0, 0.5), xlim = c(0, 10)) +
+  #coord_cartesian(ylim = c(0, 0.5), xlim = c(0, 10)) +
   # Add the weighted one
   geom_step(data = dat, aes(x = time), linewidth = 1.5, linetype = "dashed") +
   geom_step(

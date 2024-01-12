@@ -9,8 +9,8 @@ args_event_times = list(
   params = list(
     "cause1" = list(
       "formula" = ~ X + Z,
-      "betas" = c(1, 1),
-      "p" = 0.65,
+      "betas" = c(0.3, 0.3),
+      "p" = 0.15,
       "base_rate" = 1,
       "base_shape" = 0.75
     ),
@@ -28,7 +28,7 @@ args_imputations = list(m = 10, iters = 1, rjlimit = 1000, rhs_kmi = "1")
 args_covariates = list("X_type" = "binary")
 
 set.seed(87564)
-n <- 10000L
+n <- 5000L
 dat <- generate_dataset(
   n = n,
   args_event_times = args_event_times,
@@ -69,7 +69,7 @@ dat[D == 2] |>
   ggplot(aes(H_subdist_weighted)) +
   geom_histogram(col = "black", fill = "lightblue") +
   geom_vline(xintercept = max(dat[D == 2]$H_subdist_V), col = "black", linewidth = 2) +
-  coord_cartesian(xlim = c(0, ))
+  coord_cartesian(xlim = c(0, 2))
 
 meths <- make.method(dat, defaultMethod = c("norm", "logreg", "polyreg", "polr"))
 predmat <- make.predictorMatrix(dat)

@@ -22,7 +22,7 @@ censoring_type <- c("none", "exponential", "admin")
 
 # We set some of the varying parameters as targets, so we can use dynamic branching later
 dynamic_settings <- list(
-  tar_target(reference_patients, expand.grid(X = c(0, 1), Z = c(0, 1))),
+  tar_target(reference_patients, expand.grid(X = c(0, 1), Z = c(-2, -1, 0, 1, 2))),
   tar_target(failure_time_model_dyn, failure_time_model),
   tar_target(censoring_type_dyn, censoring_type)
 )
@@ -180,8 +180,8 @@ list(
   dynamic_settings,
   simulation_pipeline_main,
   tar_combine(simulations_main, simulation_pipeline_main[["simreps"]]),
-  applied_example
-
+  applied_example,
+  tar_combine(true_cuminc_all, simulation_pipeline_main[["true_cuminc"]])
 
   # In reporting: forget about admin cens; just mention in-text re. SEs
 
