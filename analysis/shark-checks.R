@@ -116,7 +116,7 @@ coefs_main[term == "X" & !(method %in% c( "Full data"))] |>
     axis.text.x = element_text(angle = 90, hjust = 1),
     legend.position = "none"
   ) +
-  scale_y_continuous(minor_breaks = NULL, breaks = c(0, 10, 25, 50, -10, -25, -50)) +
+  scale_y_continuous(minor_breaks = NULL, breaks = c(0, 10, 25, 50, 75, -10, -25, -50, -75)) +
   scale_x_discrete(limits = rev) +
   geom_hline(
     aes(yintercept = 0),
@@ -150,67 +150,25 @@ ggsave(
 
 
 crit <- qnorm((1 - 0.95) / 2, lower.tail = FALSE)
+dodge_w <- 0.75
+
 df_summ <- data.table(sim_summ$summ)
-df_summ_var <- df_summ[stat %in% c("modelse", "empse", "cover")]
+df_summ_var <- df_summ[stat %in% c("modelse", "empse", "cover") & method != "Full data" & term == "X"]
 df_summ_var[, stat := factor(
   stat, levels = c("empse", "modelse", "cover"),
   labels = c("Emp. SE", "Mod. SE", "Coverage")
 )]
 df_summ_var[, stat_lab := paste0(
   "bold('", stat, ":')~",
-  round(est, 2), "~(", ifelse(mcse < 0.001, "~'<'~0.001", round(mcse, 3)) , ")"
+  round(est, 3), "~(", round(mcse, 2), ")"
 )]
 
 
-
-# Bias --------------------------------------------------------------------
-
-
-# Preb labels
-df_lab_bias <- data.table(sim_summ$summ)[stat %in% c("modelse", "empse")]
-df_lab_bias[, stat := factor(stat, levels = c("empse", "modelse"), labels = c("Emp. SE", "Mod. SE"))]
-df_lab_bias[, stat_lab := paste0(
-  "bold('", stat, ":')~",
-  round(est, 2), "~(", ifelse(mcse < 0.001, "~'<'~0.001", round(mcse, 3)) , ")"
-)]
-
-test <- df_lab_bias[, .(
-  lab = paste0("atop(", paste(stat_lab, collapse = ","), ")")
-  #lab = paste0("atop(")
-), by = c(
-  "method",
-  "censoring_type",
-  "failure_time_model",
-  "prob_space",
-  "term"
-)]
-
-
-
-
-# Master lolly ------------------------------------------------------------
-
-df_lolly <- data.table(sim_summ$summ)[
-  term == "X" & !(method %in% c("Full data", "Compl. cases"))
-]
-dodge_w <- 0.75
-
-left_lab <- df_lolly[stat %in% c("modelse", "empse")][, .(
-  left_lab = max(est)
-)]#, by = prob_space]
-
-#
-df_lab <- df_lolly[stat == "cover"]
-df_lab[, stat_lab := paste0(
-  "bold('Coverage:')~", round(est, 3), "~(", round(mcse, 4), ")"
-)]
-
-
-df_lolly[stat %in% c("modelse", "empse")] |>
+df_summ_var[stat %in% c("Emp. SE", "Mod. SE")] |>
   ggplot(aes(method, est, col = method)) +
   geom_text(
-    data = cbind(df_lab, left_lab),#merge(df_lab, left_lab),
-    aes(label = stat_lab, y = left_lab + 0.02),
+    data = df_summ_var[stat == "Coverage"],#merge(df_lab, left_lab),
+    aes(label = stat_lab, y = 0.21),
     hjust = 0,
     parse = TRUE,
     family = "Roboto Condensed",
@@ -218,10 +176,11 @@ df_lolly[stat %in% c("modelse", "empse")] |>
   ) +
   geom_linerange(
     aes(xmin = method, xmax = method, ymin = 0, ymax = est, linetype = stat),
-    position = position_dodge(width = dodge_w)
+    position = position_dodge(width = dodge_w),
+    linewidth = 0.5
   ) +
   geom_point(
-    size = 1.5,
+    size = 2,
     aes(shape = stat),
     position = position_dodge(width = dodge_w)
   ) +
@@ -242,7 +201,7 @@ df_lolly[stat %in% c("modelse", "empse")] |>
     failure_time_model * censoring_type ~ prob_space,
     labeller = all_labels
   ) +
-  coord_flip(ylim = c(0.05, 0.325)) +
+  coord_flip(ylim = c(0.05, 0.31)) +
   guides(colour = "none") +
   theme(legend.position = "top") +
   scale_shape_manual(
@@ -255,7 +214,8 @@ df_lolly[stat %in% c("modelse", "empse")] |>
     values = c(1:2),
     labels = c("Empirical", "Model-based")
   ) +
-  scale_color_manual(values = Manu::get_pal("Hoiho")[c(1, 2, 6, 4)])
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
+  labs(x = "Method", y = "Standard error (95% Monte-Carlo error interval)")
 
 ggsave(
   filename = "analysis/figures/perf_X.pdf",
@@ -266,102 +226,8 @@ ggsave(
 )
 
 
-#lolly_coverage <-
-df_lolly[stat == "cover"] |>
-  ggplot(aes(method, est, col = method)) +
-  geom_linerange(aes(xmin = method, xmax = method, ymin = 0.6, ymax = est)) +
-  geom_point(size = 3) +
-  geom_point(
-    aes(y = est + crit * mcse),
-    shape = 41,
-    size = 2.5
-  ) +
-  geom_point(
-    aes(y = est - crit * mcse),
-    shape = 40,
-    size = 2.5
-  ) +
-  scale_x_discrete(limits = rev) +
-  facet_grid(
-     failure_time_model * censoring_type * prob_space ~ stat,
-    labeller = all_labels,
-    scales = "free"
-    #scales = "free_y"
-  )  +
-  theme(
-    #axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "none",
-    panel.grid.major.y = element_blank()
-  ) +
-  scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  geom_hline(yintercept = 0.95, linetype = "dotted") +
-  coord_flip(ylim = c(0.65, 1.025)) +
-  labs(y = "Coverage (95% CI with MCSE)")
 
-
-# Coverage ----------------------------------------------------------------
-
-
-crit <- qnorm((1 - 0.95) / 2, lower.tail = FALSE)
-
-# Coverage
-data.table(sim_summ$summ)[stat == "cover" & term == "X"] |>
-  ggplot(aes(method, est, col = method)) +
-  geom_linerange(aes(xmin = method, xmax = method, ymin = 0.6, ymax = est)) +
-  geom_point(size = 3) +
-  geom_point(
-    aes(y = est + crit * mcse),
-    shape = 41,
-    size = 2.5
-  ) +
-  geom_point(
-    aes(y = est - crit * mcse),
-    shape = 40,
-    size = 2.5
-  ) +
-  scale_x_discrete(limits = rev) +
-  facet_grid(
-    prob_space ~ failure_time_model * censoring_type,
-    labeller = all_labels,
-    scales = "free_y"
-  )  +
-  theme(
-    #axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "none",
-    panel.grid.major.y = element_blank()
-  ) +
-  scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  geom_hline(yintercept = 0.95, linetype = "dotted") +
-  coord_flip(ylim = c(0.65, 1.025)) +
-  labs(y = "Coverage (95% CI with MCSE)")
-
-
-# Zippers -----------------------------------------------------------------
-
-
-coefs_bis <- copy(coefs_main)
-coefs_bis[, ':=' (
-  estimate = estimate - true,
-  conf.low = conf.low - true,
-  conf.high = conf.high - true
-)]
-
-sim_summ_zip <- simsum(
-  data = coefs_bis[term == "X"],
-  estvarname = "estimate",
-  se = "std.error",
-  true = 0,
-  methodvar = "method",
-  ref = "Full data",
-  ci.limits = c("conf.low", "conf.high"),
-  x = TRUE,
-  by = c("censoring_type", "failure_time_model", "prob_space")
-)
-
-autoplot(sim_summ_zip, type = "zip")
-
-
-# Try the predictions now -------------------------------------------------
+# Trying prediction plots -------------------------------------------------
 
 
 preds_main <- rbindlist(
@@ -377,21 +243,28 @@ preds_main <- rbindlist(
     )
   ), fill = TRUE
 )
+
+# For now just baseline
 preds_main[is.na(imp), imp := 0]
-new_pat <- c(1, 1) #X is only 0, 1
+new_pat <- c(0, 0) # Then c(1, 1)
 
-preds_main[, "lp" := sum(unlist(coefs) * new_pat), by = c(
-  "method",
-  "imp",
-  "time",
-  "rep_id",
-  "prob_space",
-  "failure_time_model",
-  "censoring_type"
-)]
+# Calculate linear predictor (do this bit in targets later)
+# .. for baseline this bit is unnecessary!
+# preds_main[, "lp" := sum(unlist(coefs) * new_pat), by = c(
+#   "method",
+#   "imp",
+#   "time",
+#   "rep_id",
+#   "prob_space",
+#   "failure_time_model",
+#   "censoring_type"
+# )]
+preds_main[, lp := 0]
 
+# Calculate cumulative incidence
 preds_main[, pred := 1 - (1 - base_cuminc)^exp(lp)]
 
+# Pool after cloglog!
 pooled_preds <- preds_main[, .(pooled_pred = inv_cloglog(mean(cloglog(pred)))), by = c(
   "method",
   "rep_id",
@@ -400,11 +273,13 @@ pooled_preds <- preds_main[, .(pooled_pred = inv_cloglog(mean(cloglog(pred)))), 
   "failure_time_model",
   "censoring_type"
 )]
-pooled_preds[, ':=' (X = 1, Z = 1)]
+pooled_preds[, ':=' (X = 0, Z = 0)]
 
+# Merge them with the true values
 true_vals <- tar_read(true_cuminc_all)[cause == 1]
 preds_df <- merge(pooled_preds, true_vals)
 
+# Again we can do the measures in the same way
 sim_summ_preds <- rsimsum::simsum(
   data = preds_df,
   estvarname = "pooled_pred",
@@ -416,144 +291,190 @@ sim_summ_preds <- rsimsum::simsum(
   by = c("censoring_type", "failure_time_model", "prob_space", "time")
 )
 
-#preds_df[is.na(pooled_pred)]
-summ_df <- data.table(sim_summ_preds$summ)
-summ_df[, time := as.numeric(as.character(time))]
-summ_df$stat |> unique()
+#preds_df[is.na(pooled_pred)] # only one rep had NA predictions
+df_summ_pred <- data.table(sim_summ_preds$summ)[censoring_type != "admin"]
+df_summ_pred[, time := as.numeric(as.character(time))]
+df_summ_pred$stat |> unique() # no SEs recorded so just empirical ones
 
-summ_df[stat == "thetamean" & !(method %in% "Full data")] |>
-  ggplot(aes(time, 100 * est)) +
-  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
-  #geom_line(aes(y = 100 * cuminc), col = "black", size = 1.25) +
+# Let's make some plots - focus only on no and random cens (since admin not much going on)
+# And we have to keep method = FULL so confirm it is mainly model misspec
+
+p_cumincs <- df_summ_pred[stat == "thetamean"] |>
+  ggplot(aes(time, est, group = method, col = method)) +
+  geom_line(aes(linetype = method), linewidth = 1) +
+  geom_point(aes(shape = method)) +
   facet_grid(
-    prob_space ~ failure_time_model * censoring_type,
-    scales = "free",
-    labeller = all_labels
+    prob_space * failure_time_model * censoring_type ~ .,
+    labeller = all_labels,
+    scales = "free"
   ) +
-  #coord_cartesian(ylim = c(-5, 5)) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  labs(x = "Time", y = "Bias baseline cumulative incidence (%)")
+  geom_line(
+    data = preds_df[censoring_type != "admin"],
+    aes(y = cuminc),
+    col = "black",
+    linewidth = 1
+  ) +
+  scale_color_manual(values = cols[c(3, 1, 2, 6, 4, 5)]) +
+  theme(
+    #legend.position = "none",
+    strip.background = element_blank(),
+    strip.text = element_blank()
+  ) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    shape = "Method",
+    x = "Time",
+    y = "Baseline cumulative incidence cause 1"
+  )
 
 
-summ_df[stat == "mse" & !(method %in% "Full data")] |>
-  ggplot(aes(time, 100 * sqrt(est))) +
-  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
-  #geom_line(aes(y = 100 * cuminc), col = "black", size = 1.25) +
+p_rmse <- df_summ_pred[stat == "mse"] |>
+  ggplot(aes(time, sqrt(est), group = method, col = method)) +
+  geom_line(aes(linetype = method), linewidth = 1) +
+  geom_point(aes(shape = method)) +
   facet_grid(
-    prob_space ~ failure_time_model * censoring_type,
-    scales = "free",
-    labeller = all_labels
+    prob_space * failure_time_model * censoring_type ~ .,
+    labeller = all_labels,
+    scales = "fixed" # free?
   ) +
-  #coord_cartesian(ylim = c(-5, 5)) +
-  #geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  labs(x = "Time", y = "RMSE (%)")
+  scale_color_manual(values = cols[c(3, 1, 2, 6, 4, 5)]) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    shape = "Method",
+    x = "Time",
+    y = "Root mean square error (RMSE)"
+  )
 
-summ_df[stat == "empse" & !(method %in% "Full data")] |>
-  ggplot(aes(time, est)) +
-  geom_line(aes(col = method, group = method, linetype = method), size = 2, alpha = 0.7) +
-  #geom_line(aes(y = 100 * cuminc), col = "black", size = 1.25) +
+comb <- p_cumincs + p_rmse & theme(legend.position = "top")
+comb + plot_layout(guides = "collect")
+
+ggsave(
+  filename = "analysis/figures/preds_baseline.pdf",
+  width = 7,
+  scale = 1.5,
+  height = 10,
+  device = cairo_pdf
+)
+
+
+# Now with X = 1 and  Z =1  -----------------------------------------------
+
+
+new_pat <- c(1, 1) # Then c(1, 1)
+
+# Calculate linear predictor (do this bit in targets later)
+# .. for baseline this bit is unnecessary!
+preds_main[, "lp" := sum(unlist(coefs) * new_pat), by = c(
+  "method",
+  "imp",
+  "time",
+  "rep_id",
+  "prob_space",
+  "failure_time_model",
+  "censoring_type"
+)]
+
+# Calculate cumulative incidence
+preds_main[, pred := 1 - (1 - base_cuminc)^exp(lp)]
+
+# Pool after cloglog!
+pooled_preds <- preds_main[, .(pooled_pred = inv_cloglog(mean(cloglog(pred)))), by = c(
+  "method",
+  "rep_id",
+  "time",
+  "prob_space",
+  "failure_time_model",
+  "censoring_type"
+)]
+pooled_preds[, ':=' (X = 1, Z = 1)]
+
+# Merge them with the true values
+true_vals <- tar_read(true_cuminc_all)[cause == 1]
+preds_df <- merge(pooled_preds, true_vals)
+
+# Again we can do the measures in the same way
+sim_summ_preds <- rsimsum::simsum(
+  data = preds_df,
+  estvarname = "pooled_pred",
+  se = NULL,
+  true = "cuminc",
+  methodvar = "method",
+  ref = "Full data",
+  # x = TRUE,
+  by = c("censoring_type", "failure_time_model", "prob_space", "time")
+)
+
+#preds_df[is.na(pooled_pred)] # only one rep had NA predictions
+df_summ_pred <- data.table(sim_summ_preds$summ)[censoring_type != "admin"]
+df_summ_pred[, time := as.numeric(as.character(time))]
+
+# Let's make some plots - focus only on no and random cens (since admin not much going on)
+# And we have to keep method = FULL so confirm it is mainly model misspec
+
+p_cumincs <- df_summ_pred[stat == "thetamean"] |>
+  ggplot(aes(time, est, group = method, col = method)) +
+  geom_line(aes(linetype = method), linewidth = 1) +
+  geom_point(aes(shape = method)) +
   facet_grid(
-    prob_space ~ failure_time_model * censoring_type,
-    scales = "free",
-    labeller = all_labels
+    prob_space * failure_time_model * censoring_type ~ .,
+    labeller = all_labels,
+    scales = "free"
   ) +
-  #coord_cartesian(ylim = c(-5, 5)) +
-  #geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_manual(values = Manu::get_pal("Hoiho")) +
-  labs(x = "Time", y = "RMSE (%)")
+  geom_line(
+    data = preds_df[censoring_type != "admin"],
+    aes(y = cuminc),
+    col = "black",
+    linewidth = 1
+  ) +
+  scale_color_manual(values = cols[c(3, 1, 2, 6, 4, 5)]) +
+  theme(
+    #legend.position = "none",
+    strip.background = element_blank(),
+    strip.text = element_blank()
+  ) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    shape = "Method",
+    x = "Time",
+    y = "Cumulative incidence cause 1 (X = 1 and Z = 1)"
+  )
 
 
-
-# Try the pairwise tings
-preds_df[method %in% c("SMC-FCS cause-spec", "SMC-FCS Fine-Gray")] |>
-  dcast(
-    formula = rep_id + cuminc + prob_space + failure_time_model + censoring_type ~ method,
-    value.var = "pooled_pred"
-  ) |>
-  ggplot(aes(`SMC-FCS cause-spec`, `SMC-FCS Fine-Gray`)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1) +
+p_rmse <- df_summ_pred[stat == "mse"] |>
+  ggplot(aes(time, sqrt(est), group = method, col = method)) +
+  geom_line(aes(linetype = method), linewidth = 1) +
+  geom_point(aes(shape = method)) +
   facet_grid(
-    prob_space ~ failure_time_model * censoring_type,
-    scales = "fixed"
+    prob_space * failure_time_model * censoring_type ~ .,
+    labeller = all_labels,
+    scales = "fixed" # free?
   ) +
-  geom_smooth()
+  scale_color_manual(values = cols[c(3, 1, 2, 6, 4, 5)]) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    shape = "Method",
+    x = "Time",
+    y = "Root mean square error (RMSE)"
+  )
+
+comb <- p_cumincs + p_rmse & theme(legend.position = "top")
+comb + plot_layout(guides = "collect")
+
+ggsave(
+  filename = "analysis/figures/preds_X1Z1.pdf",
+  width = 7,
+  scale = 1.5,
+  height = 10,
+  device = cairo_pdf
+)
 
 
 
 # What are the true ones? -------------------------------------------------
-
-
-preds_df[censoring_type != "admin"][, .(
-  .N,
-  pred = mean(pooled_pred, na.rm = TRUE)
-), by = c(
-  "time",
-  "method",
-  "prob_space",
-  "failure_time_model",
-  "cuminc",
-  "censoring_type",
-  "X",
-  "Z"
-)] |>  #[!(method %in% c("full", "mice_comp"))] |>
-  ggplot(aes(time, pred)) +
-  geom_line(aes(linetype = method, col = method, group = method), linewidth = 1) +
-  geom_line(aes(y = cuminc), col = "black", linewidth = 1) +
-  facet_grid(
-    failure_time_model * censoring_type ~ prob_space,
-    labeller = all_labels
-  )
-
-#[, .(
-
-
-preds_df[censoring_type != "admin" & method != "full"][, .(
-  .N,
-  rmse = sqrt(mean((pooled_pred - cuminc)^2, na.rm = TRUE))
-), by = c(
-  "time",
-  "method",
-  "prob_space",
-  "failure_time_model",
-  "cuminc",
-  "censoring_type",
-  "X",
-  "Z"
-)] |>
-  ggplot(aes(time, rmse, col = method)) +
-  geom_line(aes(linetype = method)) +
-  geom_point(aes(shape = method), size = 1.5) +
-  facet_grid(
-    failure_time_model * censoring_type ~ prob_space,
-    labeller = all_labels
-  )
-
-preds_df[method != "full"][, .(
-  .N,
-  rmse = sqrt(mean((pooled_pred - cuminc)^2, na.rm = TRUE))
-), by = c(
-  "time",
-  "method",
-  "prob_space",
-  "failure_time_model",
-  "cuminc",
-  "censoring_type",
-  "X",
-  "Z"
-)] |>
-  ggplot(aes(time, rmse, col = method)) +
-  geom_line(aes(linetype = method)) +
-  geom_point(aes(shape = method), size = 1.5) +
-  facet_grid(
-    failure_time_model * censoring_type ~ prob_space,
-    labeller = all_labels
-  )
-
-
-
 
 
 tar_load(true_cuminc_all)

@@ -1,11 +1,59 @@
 impdats <- data.table(tar_read(applied_impdats))
 tar_load(applied_dat)
-
 options(contrasts = rep("contr.treatment", 2))
+
+# For Roboto font and Manu "Hoiho" palette
+library(extrafont) # Add to packages file?
+cols <- c("#CABEE9", "#7C7189", "#FAE093", "#D04E59", "#BC8E7D", "#2F3D70")
 
 impdats[, .(.N), by = c("id", "method")]
 impdats[, .(.N), by = c("tar_batch", "tar_rep", "method")]
 # tarbatch * tarrep = imp
+
+# Check cuminc orig data
+np_curves <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ 1, data = applied_dat$dat)
+plot(np_curves, cause = 1, col = ) # note the jump in cont prog pats
+plot(np_curves, cause = 2, add = TRUE, lty = 2)
+
+# Make a stacked plot instead?
+library(mstate)
+tmat <- trans.comprisk(K = 2)
+dat_long <- msprep(
+  time = c(NA, "time_ci_adm", "time_ci_adm"),
+  status = cbind(
+    NA,
+    as.numeric(applied_dat$dat$status_ci_adm == 1),
+    as.numeric(applied_dat$dat$status_ci_adm == 2)
+  ),
+  id = "id",
+  keep = applied_dat$sm_predictors,
+  trans = tmat,
+  data = data.frame(applied_dat$dat)
+)
+
+dat_long_exp <- expand.covs(
+  dat_long,
+  covs = applied_dat$sm_predictors,
+  longnames = F
+)
+
+marg <- coxph(Surv(time, status) ~ strata(trans), data = dat_long_exp)
+msf <- msfit(marg, trans = tmat)
+plot(msf, use.ggplot = TRUE)
+ptrans <- probtrans(msf, predt = 0)
+plot(ptrans, use.ggplot = TRUE, ord = c(3, 2, 1), type = "single")
+
+form_mstate <- reformulate(
+  response = "Surv(time, status)",
+  termlabels = c(
+    colnames(dat_long_exp)[20:45],
+    colnames(dat_long_exp)[20:45],
+    "strata(trans)"
+  )
+)
+
+coxph(form_mstate, data = dat_long_exp)
+
 
 sm_form <- reformulate(
   termlabels = applied_dat$sm_predictors,
@@ -15,6 +63,10 @@ sm_form <- reformulate(
 mods_imp_dats <- impdats[, .(
   mods = list(coxph(sm_form, data = .SD))
 ), by = c("tar_batch", "tar_rep", "method")]
+
+
+
+1 - predictCox(fit, times = timepoints, centered = FALSE)$survival
 
 summ <- rbindlist(
   with(
@@ -36,6 +88,10 @@ summ |>
     #xlim = c(0.5, 2.5),
     xlab = "Hazard ratio (95% CI)"
   )
+
+
+# Baseline hazards --------------------------------------------------------
+
 
 
 
