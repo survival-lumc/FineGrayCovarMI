@@ -5,6 +5,13 @@ options(contrasts = rep("contr.treatment", 2))
 # For Roboto font and Manu "Hoiho" palette
 library(extrafont) # Add to packages file?
 cols <- c("#CABEE9", "#7C7189", "#FAE093", "#D04E59", "#BC8E7D", "#2F3D70")
+theme_set(
+  theme_light(base_size = 16, base_family = "Roboto Condensed") +
+    theme(
+      strip.background = element_rect(fill = cols[2], colour = "white"),
+      strip.text = element_text(colour = 'white')
+    )
+)
 
 impdats[, .(.N), by = c("id", "method")]
 impdats[, .(.N), by = c("tar_batch", "tar_rep", "method")]
@@ -61,13 +68,66 @@ sm_form <- reformulate(
 )
 
 mods_imp_dats <- impdats[, .(
-  mods = list(coxph(sm_form, data = .SD))
+  mods = list(coxph(sm_form, data = .SD, x = TRUE))
 ), by = c("tar_batch", "tar_rep", "method")]
 
+times_preds <- seq(0.01, 60, by = 0.1)
+
+hi <- mods_imp_dats[, .(
+  "base" = list(
+    cbind.data.frame(
+      time = times_preds,
+      cuminc = 1 - predictCox(object = mods[[1]], times = times_preds, centered = FALSE)$survival
+    )
+  )
+), by = c("tar_batch", "tar_rep", "method")]
+
+hi[, unlist(base, recursive = FALSE), by = c("tar_batch", "tar_rep", "method")][, .(
+  pred = inv_cloglog(mean(cloglog(cuminc)))
+), by = c("method", "time")] |>
+  ggplot(aes(time, pred, group = method, col = method)) +
+  geom_step(aes(linetype = method), linewidth = 1) +
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
+  coord_cartesian(ylim = c(0, 0.25))
 
 
-1 - predictCox(fit, times = timepoints, centered = FALSE)$survival
+# PAIRWISE PREDS AT 36 months??
+horizon <- 36
 
+preds_imp_dats <- impdats[, .(
+  id = id,
+  preds = {
+    mod <- coxph(sm_form, data = .SD, x = TRUE)
+    drop(predictRisk(mod, newdata = .SD, times = horizon))
+  }
+), by = c("tar_batch", "tar_rep", "method")]
+
+df <- applied_dat$dat
+id_cc <- df[complete.cases(df), ][["id"]]
+preds_cc <- preds_imp_dats[, .(
+  preds_pooled = inv_cloglog(mean(cloglog(preds)))
+), by = c("method", "id")]#[!(id %in% id_cc)]
+preds_cc[id %in% id_cc][method %in% c("Compl. cases", "SMC-FCS Fine-Gray")]
+wide <- dcast(
+  preds_cc[id %in% id_cc],
+  id ~ method, value.var = "preds_pooled"
+)
+
+wide |>
+  ggplot(aes(`Compl. cases`, `SMC-FCS Fine-Gray`)) +
+  geom_point(alpha = 0.5, size = 3) +
+  scale_color_viridis_b(direction = -1) +
+  geom_abline(a = 0, b = 1, col = "lightblue", linewidth = 1) +
+  geom_smooth()
+
+preds_cc[id %in% id_cc] |>
+  ggplot(aes(preds_pooled)) +
+  geom_density(aes(col = method), alpha = 0.5, fill = NA)
+
+GGally::ggpairs(wide, columns = 2:6)
+
+
+# COEFS:
 summ <- rbindlist(
   with(
     mods_imp_dats[, .(

@@ -394,6 +394,63 @@ pooled_preds[, ':=' (X = 1, Z = 1)]
 true_vals <- tar_read(true_cuminc_all)[cause == 1]
 preds_df <- merge(pooled_preds, true_vals)
 
+# Check jitter plots at one timepoints, to see if you should do performance measures on
+# transformation scale?
+preds_df[time == 1 & method != "Full data"] |>
+  ggplot(aes(method, 100 * (pooled_pred - cuminc) / cuminc)) +
+  geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
+  facet_grid(
+    failure_time_model * censoring_type ~ prob_space,
+    labeller = all_labels
+  ) +
+  coord_flip() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    legend.position = "none"
+  ) +
+  scale_y_continuous(minor_breaks = NULL, breaks = c(0, 10, 25, 50, 75, -10, -25, -50, -75)) +
+  scale_x_discrete(limits = rev) +
+  geom_hline(
+    aes(yintercept = 0),
+    linetype = "solid",
+    linewidth = 1,
+    col = cols[3],
+    alpha = 1
+  ) +
+  stat_summary(
+    fun = mean,
+    geom = "crossbar",
+    fatten = 1.5,
+    #linewidth = 0.5,
+    col = "black",
+    alpha = 0.75,
+    lineend = "round"
+  ) +
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
+  labs(x = "Method", y = "100 * (Estimate - True) / True (%)")
+
+
+# plots like below but relative bias?
+preds_df[, .(
+  .N,
+  rel_bias = 100 * mean((pooled_pred - cuminc) / cuminc, na.rm = TRUE)
+), by = c(
+  "time",
+  "prob_space",
+  "failure_time_model",
+  "censoring_type",
+  "method"
+)] |>
+  ggplot(aes(time, rel_bias, group = method, col = method)) +
+  geom_line(aes(linetype = method), linewidth = 1) +
+  geom_point(aes(shape = method)) +
+  facet_grid(
+    failure_time_model * censoring_type ~ prob_space,
+    labeller = all_labels
+  ) +
+  geom_hline(yintercept = 0)
+
+
 # Again we can do the measures in the same way
 sim_summ_preds <- rsimsum::simsum(
   data = preds_df,

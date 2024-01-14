@@ -6,10 +6,11 @@
 
 # Manu::get_pal("Hoiho")
 # need to load extrafont if we want Roboto Condensed
+library(extrafont)
 cols <- c("#CABEE9", "#7C7189", "#FAE093", "#D04E59", "#BC8E7D", "#2F3D70")
 
 theme_set(
-  theme_light(base_size = 16) + #, base_family = "Roboto Condensed") +
+  theme_light(base_size = 16, base_family = "Roboto Condensed") +
     theme(
       strip.background = element_rect(fill = Manu::get_pal("Hoiho")[[2]], colour = "white"),
       strip.text = element_text(colour = 'white')
@@ -80,7 +81,7 @@ p1 <- dat_p1[!(hazard_type == "subdist_haz" & cause == 2)] |>
   facet_wrap(p * mech ~ ., ncol = 4, labeller = all_labels) +
   scale_color_manual(
     breaks = c("cs_haz.1", "cs_haz.2", "subdist_haz.1"),
-    values = cols[1:3],
+    values = cols[c(1, 2, 5)],
     labels = c("Cause-spec cause 1", "Cause-spec cause 2", "Subdist. cause 1")
   ) +
   scale_linetype_manual(
@@ -104,7 +105,7 @@ p2 <- dat_true[X == 0 & Z == 0] |>
   ) +
   facet_wrap(p * mech ~ ., ncol = 4) +
   scale_color_manual(
-    values = Manu::get_pal("Hoiho")[1:2],
+    values = cols[c(1, 2)],
     labels = c("Cause 1", "Cause 2")
   ) +
   scale_linetype_manual(
@@ -148,7 +149,7 @@ p3 <- dat_p3[!(HR_type == "HR_subdist" & cause == 2)]|>
   facet_wrap(p * mech ~ ., ncol = 4) +
   scale_color_manual(
     breaks = c("HR_cs.1", "HR_cs.2", "HR_subdist.1"),
-    values = cols[1:3],
+    values = cols[c(1, 2, 5)],
     labels = c("Cause-spec cause 1", "Cause-spec cause 2", "Subdist. cause 1")
   ) +
   scale_linetype_manual(
@@ -172,8 +173,9 @@ p1 / p2 / p3
 
 ggsave(
   plot = p1 / p2 / p3,
-  "analysis/figures/scenarios_vis.png", # pdf later
+  "analysis/figures/scenarios_vis.pdf", # pdf later
   dpi = 300,
   width = 13,
-  height = 9
+  height = 9,
+  device = cairo_pdf
 )
