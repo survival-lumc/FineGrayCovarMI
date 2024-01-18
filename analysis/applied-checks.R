@@ -2,6 +2,8 @@ impdats <- data.table(tar_read(applied_impdats))
 tar_load(applied_dat)
 options(contrasts = rep("contr.treatment", 2))
 
+#### MAKE THE CS MODELS + FG MODEL AND SAVE IN NESTED DTS??
+
 # For Roboto font and Manu "Hoiho" palette
 library(extrafont) # Add to packages file?
 cols <- c("#CABEE9", "#7C7189", "#FAE093", "#D04E59", "#BC8E7D", "#2F3D70")
