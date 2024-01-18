@@ -22,7 +22,7 @@ censoring_type <- c("none", "exponential", "admin")
 
 # We set some of the varying parameters as targets, so we can use dynamic branching later
 dynamic_settings <- list(
-  tar_target(reference_patients, expand.grid(X = c(0, 1), Z = c(-2, -1, 0, 1, 2))),
+  tar_target(reference_patients, data.frame(X = c(0, 1), Z = c(0, 1))),
   tar_target(failure_time_model_dyn, failure_time_model),
   tar_target(censoring_type_dyn, censoring_type)
 )
@@ -152,6 +152,66 @@ simulation_pipeline_main <- tar_map(
   )
 )
 
+# Summarize the simulations
+summarized_sims <- list(
+  dynamic_settings,
+  simulation_pipeline_main,
+  tar_combine(true_cuminc_all, simulation_pipeline_main[["true_cuminc"]]),
+  tar_combine(
+    simulations_main,
+    simulation_pipeline_main[["simreps"]],
+    command = {
+      setDT(vctrs::vec_c(!!!.x))[, .(
+        coefs = list(rbindlist(coefs_summary, idcol = "rep_id")),
+        preds = list(rbindlist(preds_summary, idcol = "rep_id"))
+      ), by = c("prob_space","failure_time_model", "censoring_type", "method")]
+    }
+  ),
+  tar_target(
+    coefs_main,
+    command = {
+      df <- rbindlist(
+        with(
+          simulations_main,
+          Map(
+            f = cbind,
+            method = method,
+            coefs,
+            prob_space = prob_space,
+            failure_time_model = failure_time_model,
+            censoring_type = censoring_type
+          )
+        ), fill = TRUE
+      )
+      df[, term := ifelse(grepl(pattern = "^X", term), "X", as.character(term))]
+    }
+  ),
+  tar_target(
+    preds_main,
+    command = {
+      df <- rbindlist(
+        with(
+          simulations_main,
+          Map(
+            f = cbind,
+            method = method,
+            preds,
+            prob_space = prob_space,
+            failure_time_model = failure_time_model,
+            censoring_type = censoring_type
+          )
+        ), fill = TRUE
+      )
+      df[is.na(imp), imp := 0]
+    }
+  ),
+  tar_target(
+    pooled_preds_main,
+    pool_nested_predictions(preds_main, new_pat = as.numeric(reference_patients)),
+    pattern = map(reference_patients)
+  )
+)
+
 applied_imp_settings <- list(
   num_imputations = 100,
   num_cycles = 20,
@@ -177,27 +237,9 @@ applied_example <- list(
 
 # Here we bring together all the simulation scenarios
 list(
-  dynamic_settings,
-  simulation_pipeline_main,
-  tar_combine(simulations_main, simulation_pipeline_main[["simreps"]]),
   applied_example,
-  tar_combine(true_cuminc_all, simulation_pipeline_main[["true_cuminc"]])
-
-  # In reporting: forget about admin cens; just mention in-text re. SEs
-
-  # Pool predictions just for main simulations?
-  # tar_target(
-  #   pooled_preds_main,
-  #   pool_nested_predictions(
-  #     nested_df = simulations_main,
-  #     new_pat = c(X = reference_patients$X, Z = reference_patients$Z)
-  #   ) |>
-  #     cbind(
-  #       "X" = reference_patients$X,
-  #       "Z" = reference_patients$Z
-  #     ),
-  #   pattern = map(reference_patients)
-  # )
+  summarized_sims,
+  tar_quarto(simulation_results, path = "analysis/simulation_results.qmd")
 )
 
 # To-do:

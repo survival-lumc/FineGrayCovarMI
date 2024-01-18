@@ -104,9 +104,31 @@ sim_summ <- rsimsum::multisimsum(
 # Jitter plot relative bias -----------------------------------------------
 
 
-coefs_main[term == "X" & !(method %in% c( "Full data"))] |>
-  ggplot(aes(method, 100 * (estimate - true) / true)) +
-  geom_jitter(aes(col = method), size = 2.5, width = 0.25, alpha = 0.25, shape = 16) +
+df_relbias <- copy(coefs_main[term == "X" & !(method %in% c( "Full data"))]) # keep full data or no?
+df_relbias[, relbias := 100 * (estimate - true) / true]
+df_relbias[, dens := {
+  approxfun(density(relbias))(relbias)
+}, by = c(
+  "method",
+  "censoring_type",
+  "failure_time_model",
+  "prob_space"
+)]
+
+
+#coefs_main[term == "X" & !(method %in% c( "Full data"))] |>
+df_relbias |>
+  ggplot(aes(method, relbias)) +
+  geom_jitter(
+    aes(
+      col = method,
+      alpha = dens
+    ),
+    size = 2.5,
+    width = 0.25,
+    shape = 16
+  ) +
+  scale_alpha_continuous(range = c(0.1, 0.5)) +
   facet_grid(
     failure_time_model * censoring_type ~ prob_space,
     labeller = all_labels
@@ -138,7 +160,7 @@ coefs_main[term == "X" & !(method %in% c( "Full data"))] |>
   labs(x = "Method", y = "100 * (Estimate - True) / True (%)")
 
 ggsave(
-  filename = "analysis/figures/bias_X.pdf",
+  filename = "analysis/figures/bias_X_v2.pdf",
   width = 7,
   scale = 1.25,
   height = 10,
@@ -160,7 +182,7 @@ df_summ_var[, stat := factor(
 )]
 df_summ_var[, stat_lab := paste0(
   "bold('", stat, ":')~",
-  round(est, 3), "~(", round(mcse, 2), ")"
+  round(est, 3), "~(", round(mcse, 3), ")"
 )]
 
 
@@ -168,7 +190,7 @@ df_summ_var[stat %in% c("Emp. SE", "Mod. SE")] |>
   ggplot(aes(method, est, col = method)) +
   geom_text(
     data = df_summ_var[stat == "Coverage"],#merge(df_lab, left_lab),
-    aes(label = stat_lab, y = 0.21),
+    aes(label = stat_lab, y = 0.205),
     hjust = 0,
     parse = TRUE,
     family = "Roboto Condensed",
@@ -328,6 +350,37 @@ p_cumincs <- df_summ_pred[stat == "thetamean"] |>
     y = "Baseline cumulative incidence cause 1"
   )
 
+p_diffs <- preds_df[, .(est = mean(pooled_pred, na.rm = TRUE)), by = c(
+  "method",
+  "time",
+  "prob_space",
+  "failure_time_model",
+  "censoring_type",
+  "cuminc"
+)][censoring_type != "admin"] |>
+  ggplot(aes(time, est - cuminc, group = method, col = method)) +
+  geom_hline(yintercept = 0, col = "black", linewidth = 1) +
+  geom_line(aes(linetype = method), linewidth = 1) +
+  geom_point(aes(shape = method)) +
+  facet_grid(
+    prob_space * failure_time_model * censoring_type ~ .,
+    labeller = all_labels,
+    scales = "fixed"
+  ) +
+  scale_color_manual(values = cols[c(3, 1, 2, 6, 4, 5)]) +
+  theme(
+    #legend.position = "none",
+    strip.background = element_blank(),
+    strip.text = element_blank()
+  ) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    shape = "Method",
+    x = "Time",
+    y = "Difference predicted - true baseline cumulative incidence cause 1"
+  )
+
 
 p_rmse <- df_summ_pred[stat == "mse"] |>
   ggplot(aes(time, sqrt(est), group = method, col = method)) +
@@ -347,7 +400,7 @@ p_rmse <- df_summ_pred[stat == "mse"] |>
     y = "Root mean square error (RMSE)"
   )
 
-comb <- p_cumincs + p_rmse & theme(legend.position = "top")
+comb <- p_cumincs + p_diffs + p_rmse & theme(legend.position = "top")
 comb + plot_layout(guides = "collect")
 
 ggsave(
@@ -499,6 +552,37 @@ p_cumincs <- df_summ_pred[stat == "thetamean"] |>
     y = "Cumulative incidence cause 1 (X = 1 and Z = 1)"
   )
 
+p_diffs <- preds_df[, .(est = mean(pooled_pred, na.rm = TRUE)), by = c(
+  "method",
+  "time",
+  "prob_space",
+  "failure_time_model",
+  "censoring_type",
+  "cuminc"
+)][censoring_type != "admin"] |>
+  ggplot(aes(time, est - cuminc, group = method, col = method)) +
+  geom_hline(yintercept = 0, col = "black", linewidth = 1) +
+  geom_line(aes(linetype = method), linewidth = 1) +
+  geom_point(aes(shape = method)) +
+  facet_grid(
+    prob_space * failure_time_model * censoring_type ~ .,
+    labeller = all_labels,
+    scales = "fixed"
+  ) +
+  scale_color_manual(values = cols[c(3, 1, 2, 6, 4, 5)]) +
+  theme(
+    #legend.position = "none",
+    strip.background = element_blank(),
+    strip.text = element_blank()
+  ) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    shape = "Method",
+    x = "Time",
+    y = "Difference predicted - true baseline cumulative incidence cause 1"
+  )
+
 
 p_rmse <- df_summ_pred[stat == "mse"] |>
   ggplot(aes(time, sqrt(est), group = method, col = method)) +
@@ -518,8 +602,9 @@ p_rmse <- df_summ_pred[stat == "mse"] |>
     y = "Root mean square error (RMSE)"
   )
 
-comb <- p_cumincs + p_rmse & theme(legend.position = "top")
+comb <- p_cumincs + p_diffs + p_rmse & theme(legend.position = "top")
 comb + plot_layout(guides = "collect")
+
 
 ggsave(
   filename = "analysis/figures/preds_X1Z1.pdf",

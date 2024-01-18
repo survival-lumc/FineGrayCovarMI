@@ -1,63 +1,34 @@
 # Later extent properly with the (...),for now keep it simple
-pool_nested_predictions <- function(nested_df,
+pool_nested_predictions <- function(preds_main,
                                     new_pat, # should be numeric!
                                     ...) {
 
-  # Collapse the nested data frame with necessary identifier
-  unnested_df <- rbindlist(
-    with(
-      tar_read(simulations_main),
-      #nested_df,
-      Map(
-        f = cbind,
-        method = method,
-        preds_summary,
-        prob_space = prob_space,
-        failure_time_model = failure_time_model,
-        censoring_type = censoring_type,
-        rep_id = tar_rep,
-        batch_id = tar_batch#,
-        #...
-      )
-    ),
-    fill = TRUE
-  )
-
-  # Give full and CCA methods a 'zero' id for the imputation
-  unnested_df[is.na(imp), imp := 0]
-
-  # To make prediction
-  predict_nested_FG <- function(base_cuminc, coefs, new_pat) {
-    1 - (1 - base_cuminc)^exp(coefs[[1]] %*% new_pat)
-  }
-
-  # Predict for a given patient
-  unnested_df[, pred := predict_nested_FG(base_cuminc, coefs, new_pat), by = c(
+  bycols <- c(
     "method",
     "rep_id",
-    "batch_id",
-    "time",
     "imp",
     "prob_space",
     "failure_time_model",
     "censoring_type"
-  )]
+  )
+  setkeyv(preds_main, bycols)
+  df_lp <- preds_main[, .(lp = drop(new_pat %*% coefs[[1]])), by = bycols]
 
-  # Now we pool the predictions after cloglog transformations
-  pooled_preds <- unnested_df[, .(pooled_pred = inv_cloglog(mean(cloglog(pred)))), by = c(
-    "method",
+  df_pooled <- preds_main[df_lp][, .(
+    pooled_pred = inv_cloglog(mean(cloglog(1 - (1 - base_cuminc)^exp(lp))))
+  ), by = c(
     "rep_id",
-    "batch_id",
-    "time",
+    "method",
     "prob_space",
     "failure_time_model",
-    "censoring_type"
+    "censoring_type",
+    "time"
   )]
-
-  return(pooled_preds)
+  cbind(df_pooled, "X" = new_pat[1], "Z" = new_pat[2])
 }
 
 
+# Ok do a jackknife ting?
 rmse_mcse <- function(estimates, true, K) {
 
   # Keep first true value
