@@ -572,7 +572,7 @@ for (i in seq_along(pats)) {
     plot = p,
     filename = paste0("analysis/figures/preds_", pats[i], ".pdf"),
     width = 7,
-    scale = 1.25,
+    scale = 1.5,
     height = 10,
     device = cairo_pdf
   )
@@ -583,9 +583,13 @@ for (i in seq_along(pats)) {
 
 :::
 
-## Miscellaneous vis
+## Miscellaneous 
+
+### Covariates and missing data mechanism
 
 ```{r}
+#| out-width: "100%"
+#| fig-height: 7
 dat_missmech <- generate_dataset(
   n = 2000,
   args_event_times = list(
@@ -600,8 +604,158 @@ dat_missmech <- generate_dataset(
 
 dat_missmech[, prob_miss_X := plogis(1.5 * Z)]
 
-dat_missmech |> 
-  ggplot(aes(X_obs, Z, col = prob_miss_X)) +
-  geom_jitter(aes(shape = factor(X_missind)), width = 0.25, alpha = 0.75, size = 2) +
-  scale_color_viridis_c(direction = -1)
+p_jitt <- dat_missmech |> 
+  ggplot(aes(Z, X_obs, col = prob_miss_X)) +
+  geom_jitter(aes(shape = factor(X_missind)), height = 0.25, alpha = 0.35, size = 2.5) +
+  scale_color_viridis_c(direction = -1) +
+  scale_shape_manual("X missing", values = c(16, 17), labels = c("No", "Yes")) +
+  labs(y = "X", col = "Probability\nX missing")
+
+p_logis <- dat_missmech |> 
+  ggplot(aes(Z, plogis(1.5 * Z))) +
+  geom_line(linewidth = 2, col = cols[6]) +
+  labs(y = "Probability of X missing")
+
+p_logis / p_jitt  
+```
+
+### Censoring plots
+
+```{r}
+dat <- generate_dataset(
+  n = 2e3,
+  list(
+    mechanism = "correct_FG",
+    params = tar_read(true_params_correct_FG_0.15),
+    censoring_type = "exponential",
+    censoring_params = list("exponential" = "0.49")
+  ),
+  list(mech_params = list("prob_missing" = 0, "mechanism_expr" = "1"))
+)
+
+dat <- generate_dataset(
+  n = 2e3,
+  list(
+    mechanism = "misspec_FG",
+    params = tar_read(params_weibull_lfps_0.65),
+    censoring_type = "exponential",
+    censoring_params = list("exponential" = "0.49")
+  ),
+  list(mech_params = list("prob_missing" = 0, "mechanism_expr" = "1"))
+)
+
+cens_imps <- kmi(
+  formula = Surv(time, D != 0) ~ 1, 
+  data = data.frame(dat),
+  etype = D,
+  failcode = 1, # non-relapse mortality is the outcome
+  nimp = 30, # make bigger later, set globally
+  bootstrap = F,
+  nboot = 100
+)
+
+imp_dats_cens <- lapply(cens_imps$imputed.data, function(imp_dat) {
+  cbind.data.frame(cens_imps$original.data, imp_dat)
+}) |> rbindlist(idcol = ".imp")
+
+imp_dats_cens[, H1_subdist := compute_marginal_cumhaz(
+  timevar = newtimes,
+  statusvar = newevent,
+  cause = 1,
+  type = "cause_spec"
+), by = .imp]
+
+imp_dats_cens[, .imp := factor(.imp)]
+
+dat[, "V_true" := (D == 1) * time + (D != 1) * cens_time]
+dat[, H1_subdist_true := compute_marginal_cumhaz(
+  timevar = V_true,
+  statusvar = D,
+  cause = 1,
+  type = "cause_spec"
+)]
+dat[, H1_subdist_T := compute_marginal_cumhaz(
+  timevar = time,
+  statusvar = D,
+  cause = 1,
+  type = "subdist"
+)]
+
+id_samps <- sample(dat[D ==2]$id, size = 20, replace = FALSE)
+
+mod_cumhaz_true <- survival::coxph(
+  Surv(time, status) ~ 1,
+  control = survival::coxph.control(timefix = FALSE),
+  data = cbind.data.frame("time" = dat$V_true, "status" = as.numeric(dat$D == 1))
+)
+haz_df <- survival::basehaz(mod_cumhaz_true)
+
+
+fun_axis <- Vectorize(function(time) {
+  if (time < 1) return(time / 1e10)
+  tail(haz_df[haz_df$time <= time, "hazard"], n = 1)
+}, vectorize.args = "time")
+
+# Make secondary x axis, for time??
+merge(imp_dats_cens, dat)[id %in% id_samps] |> 
+  melt(
+    measure.vars = c("H1_subdist_true", "H1_subdist_T", "H1_subdist"),
+    variable.name = "cumhaz_type",
+    value.name = "value"
+  ) |> 
+  ggplot(aes(as.numeric(factor(id)), value, group = id)) +
+  geom_line(col = "#CABEE9") +
+  geom_point(aes(col = cumhaz_type, shape = cumhaz_type, size = cumhaz_type)) +
+  scale_size_manual(
+    "Type",
+    values = c(3, 3, 1),
+    labels = c(
+      expression(Lambda[1](V)~(true)), 
+      expression(Lambda[1](T)~(true)),
+      expression(Lambda[1](V)~(imputed))
+    )
+  ) +
+  scale_colour_manual(
+    "Type",
+    values = c("#2F3D70", "#D04E59", "#CABEE9"),
+    labels = c(
+      expression(Lambda[1](V)~(true)), 
+      expression(Lambda[1](T)~(true)),
+      expression(Lambda[1](V)~(imputed))
+    )
+  ) +
+  scale_shape_manual(
+    "Type",
+    values = c(16, 17, 16),
+    labels = c(
+      expression(Lambda[1](V)~(true)), 
+      expression(Lambda[1](T)~(true)),
+      expression(Lambda[1](V)~(imputed))
+    ) 
+  ) +
+  scale_y_continuous(sec.axis = sec_axis(~ fun_axis(time = .)))
+  coord_flip() + 
+  theme(
+    #legend.position = "none",
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.text.align = 0
+  ) +
+  labs(y = "Cumulative subdistribution hazard at", x = "Individual ID")
+
+
+imp_dats_cens |>
+  ggplot(aes(newtimes, H1_subdist)) +
+  geom_step(aes(group = .imp), alpha = 0.75, col = "gray") +
+  theme(legend.position = "none") +
+  coord_cartesian(xlim = c(0, 10)) + #, ylim = c(0, 2)) +
+  # Add the weighted one
+  geom_step(
+    data = dat,
+    aes(x = V_true, y = H1_subdist_true),
+    linewidth = 1.5,
+    col = "black",
+    linetype = "dotted"
+  ) +
+  labs(x = "Time", y = "Estimated cumulative (marginal) subdistribution hazard")
 ```

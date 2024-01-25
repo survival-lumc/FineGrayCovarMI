@@ -90,7 +90,13 @@ hi[, unlist(base, recursive = FALSE), by = c("tar_batch", "tar_rep", "method")][
   ggplot(aes(time, pred, group = method, col = method)) +
   geom_step(aes(linetype = method), linewidth = 1) +
   scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
-  coord_cartesian(ylim = c(0, 0.25))
+  coord_cartesian(ylim = c(0, 0.25)) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    x = "Time since alloHCT (months)",
+    y = "Baseline cumulative incidence function"
+  )
 
 
 # PAIRWISE PREDS AT 36 months??
