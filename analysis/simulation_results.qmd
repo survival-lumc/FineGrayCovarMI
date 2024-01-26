@@ -622,6 +622,8 @@ p_logis / p_jitt
 ### Censoring plots
 
 ```{r}
+#| out-width: "100%"
+#| fig-height: 7
 params <- tar_read(true_params_correct_FG_0.65)
 
 dat <- generate_dataset(
@@ -640,7 +642,7 @@ cens_imps <- kmi(
   data = data.frame(dat),
   etype = D,
   failcode = 1,
-  nimp = 10, # 30?
+  nimp = 5, # 30?
   bootstrap = F,
   nboot = 100
 )
@@ -667,39 +669,20 @@ dat[, H1_subdist_true := compute_marginal_cumhaz(
   type = "cause_spec"
 )]
 
-# Checks
-mod_marg <- coxph(Surv(V_true, D == 1) ~ 1, data = dat)
-mod <- update(mod_marg, . ~ X + Z)
-base_marg <- basehaz(mod_marg, centered = FALSE)
-base <- basehaz(mod, centered = FALSE)
-
-const <- base_marg$hazard / base$hazard
-with(base_marg, plot(time, hazard, type = "s"))
-with(base, lines(time, hazard, type = "s", col = "blue"))
-with(base, lines(time, hazard * const, type = "s", col = "red", lwd = 2))
-
-
-dat[, H1_subdist_T := compute_marginal_cumhaz(
-  timevar = time,
-  statusvar = D,
-  cause = 1,
-  type = "subdist"
-)]
-
 id_samps <- sample(dat[D ==2]$id, size = 20, replace = FALSE)
 
-# Get max true one, extrapolate back
+# This we will need for the secondary axis
+marg_mod <- coxph(Surv(V_true, D == 1) ~ 1, data = dat)
+bhaz <- basehaz(marg_mod, centered = FALSE)
+f <- Vectorize(function(x) tail(bhaz[bhaz$time <= x, ]$hazard, 1) + x * 1e-5)
+
+# Let's get the breaks 
 max_subdist_marg <- max(dat$H1_subdist_true)
 t_max_subdist <- dat[order(V_true)][H1_subdist_true == max_subdist_marg, .SD[1]]$V_true
-max_cuminc_marg <- 1 - exp(-max_subdist_marg) # used as p
 
 # Approx bit
-breaks_time <- pmin(t_max_subdist, c(0.1, 1.25, 2.5, 3.75, 5, 7.5, 10))
-
-cuminc_approx <- max_cuminc_marg *
-  (1 - exp(-params$cause1$base_rate * breaks_time^params$cause1$base_shape))
-subdist_approx <- -log(1 - cuminc_approx)
-breaks_sec_axis <- round(subdist_approx, 3) #as.numeric(floor(subdist_approx * 100) / 100)
+breaks_time <- pmin(t_max_subdist, c(0.01, 1.25, 2.5, 3.75, 5, 10))
+breaks_sec_axis <- round(f(breaks_time), 3) 
 
 p_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |> 
   melt(
@@ -709,7 +692,7 @@ p_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |>
   ) |> 
   ggplot(aes(as.numeric(factor(id)), value, group = id)) +
   geom_line(col = "#CABEE9") +
-  geom_point(aes(col = time_var, shape = time_var, size = time_var), alpha = 0.75) +
+  geom_point(aes(col = time_var, shape = time_var, size = time_var), alpha = 0.5) +
   scale_size_manual(
     "Timepoint",
     values = c(3, 1.5, 3),
@@ -734,43 +717,39 @@ p_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |>
   labs(y = "Time", x = "Individual ID") +
   scale_y_continuous(
     sec.axis = sec_axis(
-      trans = ~ {
-        cuminc <- max_cuminc_marg * (1 - exp(-params$cause1$base_rate * .^params$cause1$base_shape))
-        -log(1 - cuminc)
-      }, 
+      trans = ~ f(.), 
       breaks = breaks_sec_axis, 
-      name = "Cumulative subdistribution hazard at timepoint"
+      name = "Cumulative (marginal) subdistribution hazard at timepoint"
     )
-  )
-
-#plot(dat$V_true, dat$H1_subdist_true)
-#points(
-#  dat$V_true,
-#  -log(1 - (max_cuminc_marg * (1 - exp(-1 * dat$V_true^0.75)))),
-#  col = "blue"
-#)
-
+  ) +
+  geom_hline(yintercept = min(bhaz$time), linetype = "dotted")
 
 # Regular plot
 p_subdists <- imp_dats_cens |>
   ggplot(aes(newtimes, H1_subdist)) +
   geom_step(aes(group = .imp), alpha = 0.75, col = "gray") +
-  theme(legend.position = "none") +
-  coord_cartesian(xlim = c(0, 10), ylim = c(0, 1.75)) + #, ylim = c(0, 2)) +
+  #theme(legend.position = "none") +
+  coord_cartesian(xlim = c(0, 10)) + #, ylim = c(0, 2)) +
   # Add the weighted one
   geom_step(
     data = dat,
     aes(x = V_true, y = H1_subdist_true),
-    linewidth = 1.5,
+    linewidth = 1,
     col = "black",
-    linetype = "dotted"
+    alpha = 0.5
   ) +
   labs(x = "Time", y = "Estimated cumulative (marginal) subdistribution hazard")
 
 p_ids / p_subdists
 
-# crprep to show tdep weights?
-# p15 
+ggsave(
+  plot = p_ids / p_subdists,
+  "analysis/figures/cens_appendix.pdf", 
+  dpi = 300,
+  width = 9,
+  height = 10,
+  device = cairo_pdf
+)
 ```
 
 
