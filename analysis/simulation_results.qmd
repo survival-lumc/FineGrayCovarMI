@@ -622,22 +622,13 @@ p_logis / p_jitt
 ### Censoring plots
 
 ```{r}
-dat <- generate_dataset(
-  n = 2e3,
-  list(
-    mechanism = "correct_FG",
-    params = tar_read(true_params_correct_FG_0.15),
-    censoring_type = "exponential",
-    censoring_params = list("exponential" = "0.49")
-  ),
-  list(mech_params = list("prob_missing" = 0, "mechanism_expr" = "1"))
-)
+params <- tar_read(true_params_correct_FG_0.65)
 
 dat <- generate_dataset(
   n = 2e3,
   list(
-    mechanism = "misspec_FG",
-    params = tar_read(params_weibull_lfps_0.65),
+    mechanism = "correct_FG",
+    params = params,
     censoring_type = "exponential",
     censoring_params = list("exponential" = "0.49")
   ),
@@ -648,8 +639,8 @@ cens_imps <- kmi(
   formula = Surv(time, D != 0) ~ 1, 
   data = data.frame(dat),
   etype = D,
-  failcode = 1, # non-relapse mortality is the outcome
-  nimp = 30, # make bigger later, set globally
+  failcode = 1,
+  nimp = 10, # 30?
   bootstrap = F,
   nboot = 100
 )
@@ -668,12 +659,26 @@ imp_dats_cens[, H1_subdist := compute_marginal_cumhaz(
 imp_dats_cens[, .imp := factor(.imp)]
 
 dat[, "V_true" := (D == 1) * time + (D != 1) * cens_time]
+
 dat[, H1_subdist_true := compute_marginal_cumhaz(
   timevar = V_true,
   statusvar = D,
   cause = 1,
   type = "cause_spec"
 )]
+
+# Checks
+mod_marg <- coxph(Surv(V_true, D == 1) ~ 1, data = dat)
+mod <- update(mod_marg, . ~ X + Z)
+base_marg <- basehaz(mod_marg, centered = FALSE)
+base <- basehaz(mod, centered = FALSE)
+
+const <- base_marg$hazard / base$hazard
+with(base_marg, plot(time, hazard, type = "s"))
+with(base, lines(time, hazard, type = "s", col = "blue"))
+with(base, lines(time, hazard * const, type = "s", col = "red", lwd = 2))
+
+
 dat[, H1_subdist_T := compute_marginal_cumhaz(
   timevar = time,
   statusvar = D,
@@ -683,72 +688,75 @@ dat[, H1_subdist_T := compute_marginal_cumhaz(
 
 id_samps <- sample(dat[D ==2]$id, size = 20, replace = FALSE)
 
-mod_cumhaz_true <- survival::coxph(
-  Surv(time, status) ~ 1,
-  control = survival::coxph.control(timefix = FALSE),
-  data = cbind.data.frame("time" = dat$V_true, "status" = as.numeric(dat$D == 1))
-)
-haz_df <- survival::basehaz(mod_cumhaz_true)
+# Get max true one, extrapolate back
+max_subdist_marg <- max(dat$H1_subdist_true)
+t_max_subdist <- dat[order(V_true)][H1_subdist_true == max_subdist_marg, .SD[1]]$V_true
+max_cuminc_marg <- 1 - exp(-max_subdist_marg) # used as p
 
+# Approx bit
+breaks_time <- pmin(t_max_subdist, c(0.1, 1.25, 2.5, 3.75, 5, 7.5, 10))
 
-fun_axis <- Vectorize(function(time) {
-  if (time < 1) return(time / 1e10)
-  tail(haz_df[haz_df$time <= time, "hazard"], n = 1)
-}, vectorize.args = "time")
+cuminc_approx <- max_cuminc_marg *
+  (1 - exp(-params$cause1$base_rate * breaks_time^params$cause1$base_shape))
+subdist_approx <- -log(1 - cuminc_approx)
+breaks_sec_axis <- round(subdist_approx, 3) #as.numeric(floor(subdist_approx * 100) / 100)
 
-# Make secondary x axis, for time??
-merge(imp_dats_cens, dat)[id %in% id_samps] |> 
+p_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |> 
   melt(
-    measure.vars = c("H1_subdist_true", "H1_subdist_T", "H1_subdist"),
-    variable.name = "cumhaz_type",
+    measure.vars = c("time", "newtimes", "V_true"),
+    variable.name = "time_var",
     value.name = "value"
   ) |> 
   ggplot(aes(as.numeric(factor(id)), value, group = id)) +
   geom_line(col = "#CABEE9") +
-  geom_point(aes(col = cumhaz_type, shape = cumhaz_type, size = cumhaz_type)) +
+  geom_point(aes(col = time_var, shape = time_var, size = time_var), alpha = 0.75) +
   scale_size_manual(
-    "Type",
-    values = c(3, 3, 1),
-    labels = c(
-      expression(Lambda[1](V)~(true)), 
-      expression(Lambda[1](T)~(true)),
-      expression(Lambda[1](V)~(imputed))
-    )
+    "Timepoint",
+    values = c(3, 1.5, 3),
+    labels = c("T (cause 2)", "V (imputed)", "V (true)") 
   ) +
   scale_colour_manual(
-    "Type",
-    values = c("#2F3D70", "#D04E59", "#CABEE9"),
-    labels = c(
-      expression(Lambda[1](V)~(true)), 
-      expression(Lambda[1](T)~(true)),
-      expression(Lambda[1](V)~(imputed))
-    )
+    "Timepoint",
+    values = c("#D04E59", "#CABEE9", "#2F3D70"),
+    labels = c("T (cause 2)", "V (imputed)", "V (true)") 
   ) +
   scale_shape_manual(
-    "Type",
-    values = c(16, 17, 16),
-    labels = c(
-      expression(Lambda[1](V)~(true)), 
-      expression(Lambda[1](T)~(true)),
-      expression(Lambda[1](V)~(imputed))
-    ) 
+    "Timepoint",
+    values = c(17, 16, 16),
+    labels = c("T (cause 2)", "V (imputed)", "V (true)") 
   ) +
-  scale_y_continuous(sec.axis = sec_axis(~ fun_axis(time = .)))
-  coord_flip() + 
+  coord_flip(ylim = c(0, 10)) + 
   theme(
-    #legend.position = "none",
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
     legend.text.align = 0
   ) +
-  labs(y = "Cumulative subdistribution hazard at", x = "Individual ID")
+  labs(y = "Time", x = "Individual ID") +
+  scale_y_continuous(
+    sec.axis = sec_axis(
+      trans = ~ {
+        cuminc <- max_cuminc_marg * (1 - exp(-params$cause1$base_rate * .^params$cause1$base_shape))
+        -log(1 - cuminc)
+      }, 
+      breaks = breaks_sec_axis, 
+      name = "Cumulative subdistribution hazard at timepoint"
+    )
+  )
+
+#plot(dat$V_true, dat$H1_subdist_true)
+#points(
+#  dat$V_true,
+#  -log(1 - (max_cuminc_marg * (1 - exp(-1 * dat$V_true^0.75)))),
+#  col = "blue"
+#)
 
 
-imp_dats_cens |>
+# Regular plot
+p_subdists <- imp_dats_cens |>
   ggplot(aes(newtimes, H1_subdist)) +
   geom_step(aes(group = .imp), alpha = 0.75, col = "gray") +
   theme(legend.position = "none") +
-  coord_cartesian(xlim = c(0, 10)) + #, ylim = c(0, 2)) +
+  coord_cartesian(xlim = c(0, 10), ylim = c(0, 1.75)) + #, ylim = c(0, 2)) +
   # Add the weighted one
   geom_step(
     data = dat,
@@ -758,4 +766,11 @@ imp_dats_cens |>
     linetype = "dotted"
   ) +
   labs(x = "Time", y = "Estimated cumulative (marginal) subdistribution hazard")
+
+p_ids / p_subdists
+
+# crprep to show tdep weights?
+# p15 
 ```
+
+
