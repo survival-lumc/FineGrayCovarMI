@@ -1,42 +1,62 @@
 process_applied_dat <- function(dat_raw) {
 
-  # Set-up predictors and auxiliary
+  # Exclude non BM or PB source (= either CB or combinations), only like 36 excluded
+  dat_raw <- dat_raw[source_allo1 %in% c("PB", "BM")]
+
+  # Edit a few variables
+  dat_raw[, ':=' (
+    source = droplevels(source_allo1),
+    sexmatch = factor(
+      fcase(
+        DONSEX_allo1_1 == "Male" & PATSEX == "Male", "M into M",
+        DONSEX_allo1_1 == "Female" & PATSEX == "Male", "F into M",
+        DONSEX_allo1_1 == "Male" & PATSEX == "Female", "M into F",
+        DONSEX_allo1_1 == "Female" & PATSEX == "Female", "F into F"
+      ),
+      levels = c("M into M", "M into F", "F into M", "F into F")
+    ),
+    TBIxCondit = factor(
+      fcase(
+        tbi_allo1 == "no" & ric_allo1 == "standard", "MAC",
+        tbi_allo1 == "yes" & ric_allo1 == "standard", "MAC+TBI",
+        tbi_allo1 == "no" & ric_allo1 == "reduced", "RIC",
+        tbi_allo1 == "yes" & ric_allo1 == "reduced", "RIC+TBI"
+      ),
+      levels = c("MAC", "MAC+TBI", "RIC", "RIC+TBI")
+    ),
+    intdiagallo_decades = intdiagtr_allo1 / 10, # Now in decades
+    hb_allo1 = hb_allo1 - 10, # centered at Hb = 10
+    log_wbc_allo1 = log(wbc_allo1 + 0.1) - log(15.1) # reference is WBC = 15 (use 25?)
+  )]
+
   sm_predictors <- c(
-    "age_allo1_decades", # this one is centered
-    "PATSEX",
-    "hctci_risk",
-    "KARNOFSK_threecat",
-    "ruxo_preallo1",
-    "donrel_bin",
+    "age_allo1_decades", # Already centered at age = 60 (median age 58)
     "cmv_match",
-    "wbc_allo1",
-    "hb_allo1",
-    "ric_allo1",
-    "WEIGLOSS_allo1"
+    "donrel_bin",
+    "hb_allo1"  ,
+    "hctci_risk",
+    "intdiagallo_decades",
+    "KARNOFSK_threecat",
+    "log_wbc_allo1",
+    "ruxo_preallo1",
+    "sexmatch",
+    "source",
+    "submps_allo1",
+    "TBIxCondit",
+    "vchromos_preallo1",
+    "WEIGLOSS_allo1",
+    "year_allo1" # reference = 2009
   )
 
-  aux_predictors <- c(
-    "year_allo1",
-    "intdiagtr_allo1",
-    "tbi_allo1"
-  )
-
-  # Subset of relevant vars
-  dat_sub <- dat_raw[, c("time_ci_adm", "status_ci_adm", sm_predictors, aux_predictors), with = FALSE]
-
-  # Other possible disease vars:
-  # pb_allo1, sweat_allo1
-  # Include weight loss, but avoid pb since percentage..
-
-  # Use complete outcome data, and add id column
+  # Take subset with complete outcome data
+  dat_sub <- dat_raw[, c("time_ci_adm", "status_ci_adm", sm_predictors), with = FALSE]
   dat_sub <- dat_sub[complete.cases(status_ci_adm), ]
   dat_sub[, id := seq_len(.N)]
 
-  # Edit some variables pre-imputation
+  # Set as ordered for imputation part
   dat_sub[, ':=' (
     KARNOFSK_threecat = as.ordered(KARNOFSK_threecat),
-    hctci_risk = as.ordered(hctci_risk),
-    wbc_allo1 = log(wbc_allo1 + 1) # since very skewed
+    hctci_risk = as.ordered(hctci_risk)
   )]
 
   # Add the cumulative hazards
@@ -59,11 +79,7 @@ process_applied_dat <- function(dat_raw) {
   )]
 
   # Return list of essentials
-  list(
-    "dat" = dat_sub,
-    "sm_predictors" = sort(sm_predictors),
-    "aux_predictors" = aux_predictors # think of removing this
-  )
+  list("dat" = dat_sub, "sm_predictors" = sort(sm_predictors))
 }
 
 
@@ -76,7 +92,7 @@ one_imputation_applied_dat <- function(dat_processed,
   # Load in (processed) data, make year factor for imputation of censoring times
   dat <- data.frame(dat_processed$dat)
   dat$year_allo1 <- as.factor(dat$year_allo1)
-  cause <- imp_settings$cause # non-relapse mortality is the outcome
+  cause <- imp_settings$cause # the outcome
 
   # Impute the censoring times
   cens_imp <- kmi(
@@ -102,6 +118,7 @@ one_imputation_applied_dat <- function(dat_processed,
 
   # Substantive model formula (for smcfcs)
   sm_predictors <- dat_processed$sm_predictors
+
   sm_form <- reformulate(
     response = "Surv(time_ci_adm, status_ci_adm)",
     termlabels = sm_predictors
@@ -116,8 +133,8 @@ one_imputation_applied_dat <- function(dat_processed,
   predmat_csh[, setdiff(colnames(predmat_csh), c(sm_predictors, "D1", "D2", "H1", "H2"))] <- 0
   predmat_subdist[, setdiff(colnames(predmat_subdist), c(sm_predictors, "newevent", "H1_subdist"))] <- 0
 
-  # Set year back to continuous in imputation model
-  dat_to_impute$year_allo1 <- as.numeric(dat_to_impute$year_allo1) - 1
+  # Set year back to continuous in imputation model; set to decades so on same scale as others?
+  dat_to_impute$year_allo1 <- as.numeric(as.character(dat_to_impute$year_allo1))
 
   # Run the imputations
   imps_mice_csh <- mice(

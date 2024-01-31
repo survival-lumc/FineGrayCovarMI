@@ -213,12 +213,12 @@ summarized_sims <- list(
 )
 
 applied_imp_settings <- list(
-  num_imputations = 100,
-  num_cycles = 20,
-  num_batches = 10,
+  num_imputations = 10, #100,
+  num_cycles = 15, #20,
+  num_batches = 3,#10,
   rjlimit = 10000,
   rhs_cens = "year_allo1",
-  cause = 2
+  cause = 1 # relapse
 )
 
 # Reminder total number is batches/reps

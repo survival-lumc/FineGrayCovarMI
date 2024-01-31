@@ -21,8 +21,9 @@ impdats[, .(.N), by = c("tar_batch", "tar_rep", "method")]
 
 # Check cuminc orig data
 np_curves <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ 1, data = applied_dat$dat)
-plot(np_curves, cause = 1, col = ) # note the jump in cont prog pats
+plot(np_curves, cause = 1, col = "blue") # note the jump in cont prog pats
 plot(np_curves, cause = 2, add = TRUE, lty = 2)
+plot(np_curves, cause = "stacked")
 
 # Make a stacked plot instead?
 library(mstate)
@@ -90,7 +91,7 @@ hi[, unlist(base, recursive = FALSE), by = c("tar_batch", "tar_rep", "method")][
   ggplot(aes(time, pred, group = method, col = method)) +
   geom_step(aes(linetype = method), linewidth = 1) +
   scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
-  coord_cartesian(ylim = c(0, 0.25)) +
+  #coord_cartesian(ylim = c(0, 0.25)) +
   labs(
     col = "Method",
     linetype = "Method",

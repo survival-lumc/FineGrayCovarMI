@@ -738,7 +738,49 @@ p_subdists <- imp_dats_cens |>
     col = "black",
     alpha = 0.5
   ) +
-  labs(x = "Time", y = "Estimated cumulative (marginal) subdistribution hazard")
+  labs(x = "Time", y = "Estimated cumulative (marginal) subdistribution hazard") +
+  geom_curve(
+    mapping = aes(
+      x = 8,
+      y = 1,
+      xend = 8,
+      yend = max_subdist_marg - 0.025
+    ),
+    colour = "black",
+    linewidth = 0.5,
+    curvature = 0.3,
+    arrow = arrow(length = unit(0.025, "npc"), type = "open"),
+    inherit.aes = FALSE
+  ) +
+  geom_curve(
+    mapping = aes(
+      x = 2,
+      y = max_subdist_marg,
+      xend = 5.45,
+      yend = max_subdist_marg + 0.05
+    ),
+    colour = "black",
+    linewidth = 0.5,
+    curvature = -0.15,
+    arrow = arrow(length = unit(0.025, "npc"), type = "open"),
+    inherit.aes = FALSE
+  ) +
+  annotate(
+    "text",
+    x = 8,
+    y = 0.95,
+    hjust = 0.5,
+    label = "Using true V",
+    family = "Roboto Condensed"
+  ) +
+  annotate(
+    "text",
+    x = 2,
+    y = max_subdist_marg,
+    hjust = 1,
+    label = "Using imputed V\n(m = 5 imputations)",
+    family = "Roboto Condensed"
+  )
 
 p_ids / p_subdists
 
