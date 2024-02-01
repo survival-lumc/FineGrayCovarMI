@@ -33,16 +33,17 @@ process_applied_dat <- function(dat_raw) {
     "age_allo1_decades", # Already centered at age = 60 (median age 58)
     "cmv_match",
     "donrel_bin",
-    "hb_allo1"  ,
+    "hb_allo1",
+    "pb_allo1",
     "hctci_risk",
     "intdiagallo_decades",
     "KARNOFSK_threecat",
     "log_wbc_allo1",
-    "ruxo_preallo1",
     "sexmatch",
     "source",
     "submps_allo1",
-    "TBIxCondit",
+    "ric_allo1", # separate because of small groups
+    "tbi_allo1",
     "vchromos_preallo1",
     "WEIGLOSS_allo1",
     "year_allo1" # reference = 2009
