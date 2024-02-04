@@ -9,6 +9,8 @@ library("here")
 source(here("packages.R"))
 invisible(lapply(list.files(here("R"), full.names = TRUE), source))
 
+tar_option_set(error = "continue")
+
 # (!) Make this into targets markdown?
 
 # To run pipeline in parallel
@@ -214,7 +216,7 @@ summarized_sims <- list(
 
 applied_imp_settings <- list(
   num_imputations = 20, #100,
-  num_cycles = 20,
+  num_cycles = 15, #20,
   num_batches = 10,#10,
   rjlimit = 10000,
   rhs_cens = "year_allo1",
@@ -238,8 +240,8 @@ applied_example <- list(
 # Here we bring together all the simulation scenarios
 list(
   applied_example,
-  summarized_sims,
-  tar_quarto(simulation_results, path = "analysis/simulation_results.qmd")
+  summarized_sims#,
+  #tar_quarto(simulation_results, path = "analysis/simulation_results.qmd")
 )
 
 # To-do:
