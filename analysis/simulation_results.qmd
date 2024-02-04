@@ -624,6 +624,8 @@ p_logis / p_jitt
 ```{r}
 #| out-width: "100%"
 #| fig-height: 7
+
+set.seed(7865185) # for slightly nicer looking replication
 params <- tar_read(true_params_correct_FG_0.65)
 
 dat <- generate_dataset(
@@ -642,9 +644,8 @@ cens_imps <- kmi(
   data = data.frame(dat),
   etype = D,
   failcode = 1,
-  nimp = 5, # 30?
-  bootstrap = F,
-  nboot = 100
+  nimp = 10, # 30?
+  bootstrap = FALSE
 )
 
 imp_dats_cens <- lapply(cens_imps$imputed.data, function(imp_dat) {
@@ -669,7 +670,7 @@ dat[, H1_subdist_true := compute_marginal_cumhaz(
   type = "cause_spec"
 )]
 
-id_samps <- sample(dat[D ==2]$id, size = 20, replace = FALSE)
+id_samps <- sample(dat[D == 2]$id, size = 20, replace = FALSE)
 
 # This we will need for the secondary axis
 marg_mod <- coxph(Surv(V_true, D == 1) ~ 1, data = dat)
@@ -682,7 +683,6 @@ t_max_subdist <- dat[order(V_true)][H1_subdist_true == max_subdist_marg, .SD[1]]
 
 # Approx bit
 breaks_time <- pmin(t_max_subdist, c(0.01, 1.25, 2.5, 3.75, 5, 10))
-breaks_sec_axis <- round(f(breaks_time), 3) 
 
 p_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |> 
   melt(
@@ -718,7 +718,8 @@ p_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |>
   scale_y_continuous(
     sec.axis = sec_axis(
       trans = ~ f(.), 
-      breaks = breaks_sec_axis, 
+      breaks = f(breaks_time),
+      labels = round(f(breaks_time), 3),
       name = "Cumulative (marginal) subdistribution hazard at timepoint"
     )
   ) +
@@ -732,7 +733,7 @@ p_subdists <- imp_dats_cens |>
   coord_cartesian(xlim = c(0, 10)) + #, ylim = c(0, 2)) +
   # Add the weighted one
   geom_step(
-    data = dat,
+    data = dat[V_true <= max(imp_dats_cens[D == 2]$newtimes)],
     aes(x = V_true, y = H1_subdist_true),
     linewidth = 1,
     col = "black",
@@ -778,7 +779,7 @@ p_subdists <- imp_dats_cens |>
     x = 2,
     y = max_subdist_marg,
     hjust = 1,
-    label = "Using imputed V\n(m = 5 imputations)",
+    label = "Using imputed V\n(m = 10 imputations)",
     family = "Roboto Condensed"
   )
 
