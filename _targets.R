@@ -216,30 +216,30 @@ summarized_sims <- list(
 
 applied_imp_settings <- list(
   num_imputations = 20, #100,
-  num_cycles = 15, #20,
-  num_batches = 10,#10,
+  num_cycles = 20, #25,
+  num_batches = 10,
   rjlimit = 10000,
-  rhs_cens = "year_allo1",
+  rhs_cens = "year_allo1_decades",
   cause = 1 # relapse
 )
 
 # Reminder total number is batches/reps
 applied_example <- list(
   tar_target(applied_dat_raw, data.table(readRDS("data-raw//dat_clean.rds"))),
-  tar_target(applied_dat, process_applied_dat(applied_dat_raw))#,
-  # tar_rep(
-  #   applied_impdats,
-  #   one_imputation_applied_dat(dat_processed = applied_dat, imp_settings = applied_imp_settings),
-  #   reps = ceiling(applied_imp_settings$num_imputations / applied_imp_settings$num_batches),
-  #   batches = applied_imp_settings$num_batches, # for parallelizing
-  #   format = "fst"
-  # )
+  tar_target(applied_dat, process_applied_dat(applied_dat_raw)),
+  tar_rep(
+    applied_impdats,
+    one_imputation_applied_dat(dat_processed = applied_dat, imp_settings = applied_imp_settings),
+    reps = ceiling(applied_imp_settings$num_imputations / applied_imp_settings$num_batches),
+    batches = applied_imp_settings$num_batches, # for parallelizing
+    format = "fst"
+  )
 )
 
 
 # Here we bring together all the simulation scenarios
 list(
   applied_example,
-  summarized_sims,
-  tar_quarto(simulation_results, path = "analysis/simulation_results.qmd")
+  summarized_sims#,
+  #tar_quarto(simulation_results, path = "analysis/simulation_results.qmd")
 )

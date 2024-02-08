@@ -2,10 +2,10 @@ process_applied_dat <- function(dat_raw) {
 
   # Edit a few variables
   dat_raw[, ':=' (
-    intdiagallo_decades = intdiagtr_allo1 / 10, # Now in decades
-    year_allo1_decades = (year_allo1 - 10) / 10, # Most recent year is zero
-    pb_allo1_prop = pb_allo1 / 100,
-    log_hb_allo1 = log(hb_allo1) - log(10), # centered at Hb = 10
+    intdiagallo_decades = intdiagtr_allo1 / 10, # now in decades
+    year_allo1_decades = (year_allo1 - 10) / 10, # most recent year is zero
+    pb_allo1 = pb_allo1 / 10, # per 10% increase, centered from 0
+    hb_allo1 = hb_allo1 - 10, # centered at Hb = 10
     log_wbc_allo1 = log(wbc_allo1 + 0.1) - log(15.1) # reference is WBC = 15 (use 25?)
   )]
 
@@ -13,7 +13,7 @@ process_applied_dat <- function(dat_raw) {
     # These are predictors for original paper
     "hctci_risk",
     "age_allo1_decades", # Already centered at age = 60 (median age 58)
-    "wbc_allo1",
+    "log_wbc_allo1",
     "hb_allo1",
     "pb_allo1",
     "sweat_allo1",
@@ -25,12 +25,11 @@ process_applied_dat <- function(dat_raw) {
     "ruxo_preallo1",
     "ric_allo1",
     # Add also extra donor info + auxiliary vars
-    "agedonor_allo1_decades",
+    "agedonor_allo1_decades", # already centered at donor age = 35 (median was 36)
     "vchromos_preallo1",
-    "DONSEX_allo1_1",
-    "year_allo1", # year and intdiag not to be shown in forest plots
-    "intdiagtr_allo1"
-    #submps_allo1, tbi_allo1, source_allo1 not included
+    #"DONSEX_allo1_1", # only debatable one left, omit
+    "year_allo1_decades", # year and intdiag not to be shown in forest plots
+    "intdiagallo_decades"
   )
 
   # Take subset with complete outcome data
@@ -76,7 +75,6 @@ one_imputation_applied_dat <- function(dat_processed,
 
   # Load in (processed) data, make year factor for imputation of censoring times
   dat <- data.frame(dat_processed$dat)
-  dat$year_allo1 <- as.factor(dat$year_allo1)
   cause <- imp_settings$cause # the outcome
 
   # Impute the censoring times
@@ -119,7 +117,7 @@ one_imputation_applied_dat <- function(dat_processed,
   predmat_subdist[, setdiff(colnames(predmat_subdist), c(sm_predictors, "newevent", "H1_subdist"))] <- 0
 
   # Set year back to continuous in imputation model; set to decades so on same scale as others?
-  dat_to_impute$year_allo1 <- as.numeric(as.character(dat_to_impute$year_allo1))
+  dat_to_impute$year_allo1_decades <- as.numeric(as.character(dat_to_impute$year_allo1_decades))
 
   # Run the imputations
   imps_mice_csh <- mice(
