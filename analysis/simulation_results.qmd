@@ -695,7 +695,7 @@ p_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |>
   geom_point(aes(col = time_var, shape = time_var, size = time_var), alpha = 0.5) +
   scale_size_manual(
     "Timepoint",
-    values = c(3, 1.5, 3),
+    values = c(3, 2, 3),
     labels = c("T (cause 2)", "V (imputed)", "V (true)") 
   ) +
   scale_colour_manual(
@@ -728,8 +728,7 @@ p_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |>
 # Regular plot
 p_subdists <- imp_dats_cens |>
   ggplot(aes(newtimes, H1_subdist)) +
-  geom_step(aes(group = .imp), alpha = 0.75, col = "gray") +
-  #theme(legend.position = "none") +
+  geom_step(aes(group = .imp), alpha = 0.75, col = "gray", linewidth = 0.25) +
   coord_cartesian(xlim = c(0, 10)) + #, ylim = c(0, 2)) +
   # Add the weighted one
   geom_step(
@@ -742,14 +741,14 @@ p_subdists <- imp_dats_cens |>
   labs(x = "Time", y = "Estimated cumulative (marginal) subdistribution hazard") +
   geom_curve(
     mapping = aes(
-      x = 8,
+      x = 9,
       y = 1,
-      xend = 8,
-      yend = max_subdist_marg - 0.025
+      xend = max(imp_dats_cens[D == 2]$newtimes),
+      yend = max_subdist_marg
     ),
     colour = "black",
     linewidth = 0.5,
-    curvature = 0.3,
+    curvature = 0.5,
     arrow = arrow(length = unit(0.025, "npc"), type = "open"),
     inherit.aes = FALSE
   ) +
@@ -757,8 +756,8 @@ p_subdists <- imp_dats_cens |>
     mapping = aes(
       x = 2,
       y = max_subdist_marg,
-      xend = 5.45,
-      yend = max_subdist_marg + 0.05
+      xend = 4.725,
+      yend = max_subdist_marg + 0.025
     ),
     colour = "black",
     linewidth = 0.5,
@@ -768,7 +767,7 @@ p_subdists <- imp_dats_cens |>
   ) +
   annotate(
     "text",
-    x = 8,
+    x = 9,
     y = 0.95,
     hjust = 0.5,
     label = "Using true V",
@@ -786,9 +785,7 @@ p_subdists <- imp_dats_cens |>
 p_ids / p_subdists
 
 ggsave(
-  plot = p_ids / p_subdists,
-  "analysis/figures/cens_appendix.pdf", 
-  dpi = 300,
+  filename = "analysis/figures/cens_appendix.pdf", 
   width = 9,
   height = 10,
   device = cairo_pdf

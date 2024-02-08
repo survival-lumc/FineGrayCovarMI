@@ -1,52 +1,36 @@
 process_applied_dat <- function(dat_raw) {
 
-  # Exclude non BM or PB source (= either CB or combinations), only like 36 excluded
-  dat_raw <- dat_raw[source_allo1 %in% c("PB", "BM")]
-
   # Edit a few variables
   dat_raw[, ':=' (
-    source = droplevels(source_allo1),
-    sexmatch = factor(
-      fcase(
-        DONSEX_allo1_1 == "Male" & PATSEX == "Male", "M into M",
-        DONSEX_allo1_1 == "Female" & PATSEX == "Male", "F into M",
-        DONSEX_allo1_1 == "Male" & PATSEX == "Female", "M into F",
-        DONSEX_allo1_1 == "Female" & PATSEX == "Female", "F into F"
-      ),
-      levels = c("M into M", "M into F", "F into M", "F into F")
-    ),
-    TBIxCondit = factor(
-      fcase(
-        tbi_allo1 == "no" & ric_allo1 == "standard", "MAC",
-        tbi_allo1 == "yes" & ric_allo1 == "standard", "MAC+TBI",
-        tbi_allo1 == "no" & ric_allo1 == "reduced", "RIC",
-        tbi_allo1 == "yes" & ric_allo1 == "reduced", "RIC+TBI"
-      ),
-      levels = c("MAC", "MAC+TBI", "RIC", "RIC+TBI")
-    ),
     intdiagallo_decades = intdiagtr_allo1 / 10, # Now in decades
-    hb_allo1 = hb_allo1 - 10, # centered at Hb = 10
+    year_allo1_decades = (year_allo1 - 10) / 10, # Most recent year is zero
+    pb_allo1_prop = pb_allo1 / 100,
+    log_hb_allo1 = log(hb_allo1) - log(10), # centered at Hb = 10
     log_wbc_allo1 = log(wbc_allo1 + 0.1) - log(15.1) # reference is WBC = 15 (use 25?)
   )]
 
   sm_predictors <- c(
+    # These are predictors for original paper
+    "hctci_risk",
     "age_allo1_decades", # Already centered at age = 60 (median age 58)
-    "cmv_match",
-    "donrel_bin",
+    "wbc_allo1",
     "hb_allo1",
     "pb_allo1",
-    "hctci_risk",
-    "intdiagallo_decades",
-    "KARNOFSK_threecat",
-    "log_wbc_allo1",
-    "sexmatch",
-    "source",
-    "submps_allo1",
-    "ric_allo1", # separate because of small groups
-    "tbi_allo1",
-    "vchromos_preallo1",
+    "sweat_allo1",
     "WEIGLOSS_allo1",
-    "year_allo1" # reference = 2009
+    "KARNOFSK_threecat",
+    "PATSEX",
+    "donrel_bin",
+    "cmv_match",
+    "ruxo_preallo1",
+    "ric_allo1",
+    # Add also extra donor info + auxiliary vars
+    "agedonor_allo1_decades",
+    "vchromos_preallo1",
+    "DONSEX_allo1_1",
+    "year_allo1", # year and intdiag not to be shown in forest plots
+    "intdiagtr_allo1"
+    #submps_allo1, tbi_allo1, source_allo1 not included
   )
 
   # Take subset with complete outcome data
