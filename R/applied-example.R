@@ -4,16 +4,17 @@ process_applied_dat <- function(dat_raw) {
   dat_raw[, ':=' (
     intdiagallo_decades = intdiagtr_allo1 / 10, # now in decades
     year_allo1_decades = (year_allo1 - 10) / 10, # most recent year is zero
-    pb_allo1 = pb_allo1 / 10, # per 10% increase, centered from 0
-    hb_allo1 = hb_allo1 - 10, # centered at Hb = 10
-    log_wbc_allo1 = log(wbc_allo1 + 0.1) - log(15.1) # reference is WBC = 15 (use 25?)
+    pb_allo1 = pb_allo1 / 5, # per 5% increase, centered from 0
+    hb_allo1 = (hb_allo1 - 10), # centered at Hb = 10
+    wbc_allo1 = log(wbc_allo1 + 0.1) - log(15.1), #(wbc_allo1 - 15) / 10, # reference is WBC = 15 (use 25?), increase per 5
+    tceldepl_bin = factor(ifelse(tceldepl_allo1 == "no", "no", "yes"))
   )]
 
   sm_predictors <- c(
     # These are predictors for original paper
     "hctci_risk",
     "age_allo1_decades", # Already centered at age = 60 (median age 58)
-    "log_wbc_allo1",
+    "wbc_allo1",
     "hb_allo1",
     "pb_allo1",
     "sweat_allo1",
@@ -24,10 +25,10 @@ process_applied_dat <- function(dat_raw) {
     "cmv_match",
     "ruxo_preallo1",
     "ric_allo1",
-    # Add also extra donor info + auxiliary vars
-    "agedonor_allo1_decades", # already centered at donor age = 35 (median was 36)
+    # Add also extra info + auxiliary vars
     "vchromos_preallo1",
-    #"DONSEX_allo1_1", # only debatable one left, omit
+    "tceldepl_bin",
+    "submps_allo1",
     "year_allo1_decades", # year and intdiag not to be shown in forest plots
     "intdiagallo_decades"
   )
