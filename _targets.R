@@ -215,7 +215,7 @@ summarized_sims <- list(
 )
 
 applied_imp_settings <- list(
-  num_imputations = 30, #100,
+  num_imputations = 100,
   num_cycles = 20,
   num_batches = 10,
   rjlimit = 10000,

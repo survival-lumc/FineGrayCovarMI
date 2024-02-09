@@ -5,7 +5,7 @@ process_applied_dat <- function(dat_raw) {
     intdiagallo_decades = intdiagtr_allo1 / 10, # now in decades
     year_allo1_decades = (year_allo1 - 10) / 10, # most recent year is zero
     pb_allo1 = pb_allo1 / 5, # per 5% increase, centered from 0
-    hb_allo1 = (hb_allo1 - 10), # centered at Hb = 10
+    hb_allo1 = (hb_allo1 - 10) / 5, # centered at Hb = 10
     wbc_allo1 = log(wbc_allo1 + 0.1) - log(15.1), #(wbc_allo1 - 15) / 10, # reference is WBC = 15 (use 25?), increase per 5
     tceldepl_bin = factor(ifelse(tceldepl_allo1 == "no", "no", "yes"))
   )]
