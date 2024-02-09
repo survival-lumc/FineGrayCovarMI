@@ -227,14 +227,14 @@ applied_imp_settings <- list(
 applied_example <- list(
   tar_target(file, "data-raw//dat_clean.rds", format = "file"),
   tar_target(applied_dat_raw, data.table(readRDS(file))),
-  tar_target(applied_dat, process_applied_dat(applied_dat_raw))#,
-  # tar_rep(
-  #   applied_impdats,
-  #   one_imputation_applied_dat(dat_processed = applied_dat, imp_settings = applied_imp_settings),
-  #   reps = ceiling(applied_imp_settings$num_imputations / applied_imp_settings$num_batches),
-  #   batches = applied_imp_settings$num_batches, # for parallelizing
-  #   format = "fst"
-  # )
+  tar_target(applied_dat, process_applied_dat(applied_dat_raw)),
+  tar_rep(
+    applied_impdats,
+    one_imputation_applied_dat(dat_processed = applied_dat, imp_settings = applied_imp_settings),
+    reps = ceiling(applied_imp_settings$num_imputations / applied_imp_settings$num_batches),
+    batches = applied_imp_settings$num_batches, # for parallelizing
+    format = "fst"
+  )
 )
 
 
