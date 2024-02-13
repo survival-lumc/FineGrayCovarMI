@@ -1,5 +1,10 @@
 # Random effects models + other small ideas to keep for later
 source(here::here("packages.R"))
+library(lme4)
+library(GLMMadaptive)
+library(glmmTMB)
+library(rms)
+library(brms)
 invisible(lapply(list.files(here::here("R"), full.names = TRUE), source))
 options(contrasts = rep("contr.treatment", 2))
 
@@ -60,3 +65,11 @@ plot(
   legend.x = "bottomleft",
   legend.cex = 0.65
 )
+
+
+
+# Interesting things ------------------------------------------------------
+
+
+#https://stats.stackexchange.com/questions/398869/r-how-to-fit-a-glmm-in-nlme
+apply(array, margin, ...)

@@ -19,6 +19,7 @@ tar_load(applied_dat)
 dat <- applied_dat$dat
 impdats[, .(.N), by = c("tar_batch", "tar_rep", "method")]
 
+#tar_meta() |> View() # checking warnings
 
 
 # Non-param curves --------------------------------------------------------
@@ -39,6 +40,20 @@ plot(np_curves, cause = 2, add = TRUE, lty = 2)
 naniar::gg_miss_upset(dat)
 naniar::miss_var_summary(dat)
 naniar::prop_complete_case(dat)
+
+sm_predictors <- applied_dat$sm_predictors
+df_predictors <- data.frame(dat[, ..sm_predictors])
+miss_props <- sapply(df_predictors, function(col) mean(is.na(col)))
+df_predictors[, names(miss_props)[order(miss_props, decreasing = TRUE)]] |>
+  naniar::vis_miss()
+
+ggmice::plot_pattern(df_predictors, npat = 100, rotate = TRUE)
+
+
+
+# Check imputed values vs observed? For continuous? -----------------------
+
+
 
 
 # Pooled tings ------------------------------------------------------------
