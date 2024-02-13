@@ -652,6 +652,16 @@ imp_dats_cens <- lapply(cens_imps$imputed.data, function(imp_dat) {
   cbind.data.frame(cens_imps$original.data, imp_dat)
 }) |> rbindlist(idcol = ".imp")
 
+# More efficient for plotting later.. uhm actually not!
+# imp_dats_cens[,  .(
+#   cumhaz = list({
+#     basehaz(
+#       coxph(Surv(newtimes, newevent == 1) ~ 1, data = .SD), 
+#       centered = FALSE
+#     )
+#   })
+# ), by = ".imp"][, unlist(cumhaz, recursive = FALSE), by = .imp]
+
 imp_dats_cens[, H1_subdist := compute_marginal_cumhaz(
   timevar = newtimes,
   statusvar = newevent,
@@ -684,15 +694,18 @@ t_max_subdist <- dat[order(V_true)][H1_subdist_true == max_subdist_marg, .SD[1]]
 # Approx bit
 breaks_time <- pmin(t_max_subdist, c(0.01, 1.25, 2.5, 3.75, 5, 10))
 
-p_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |> 
+df_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |> 
   melt(
     measure.vars = c("time", "newtimes", "V_true"),
     variable.name = "time_var",
     value.name = "value"
-  ) |> 
+  ) 
+
+p_ids <- df_ids[, c("id", "time_var", "value")] |> 
+  unique() |> 
   ggplot(aes(as.numeric(factor(id)), value, group = id)) +
   geom_line(col = "#CABEE9") +
-  geom_point(aes(col = time_var, shape = time_var, size = time_var), alpha = 0.5) +
+  geom_point(aes(col = time_var, shape = time_var, size = time_var), alpha = 0.75) +
   scale_size_manual(
     "Timepoint",
     values = c(3, 2, 3),
@@ -725,10 +738,10 @@ p_ids <- merge(imp_dats_cens, dat)[id %in% id_samps] |>
   ) +
   geom_hline(yintercept = min(bhaz$time), linetype = "dotted")
 
-# Regular plot
-p_subdists <- imp_dats_cens |>
+# Plot from t = 1.25 to avoid graphical overlap issue
+p_subdists <- imp_dats_cens[, .SD[!duplicated(newtimes)], by = .imp][newtimes > 1.25] |>
   ggplot(aes(newtimes, H1_subdist)) +
-  geom_step(aes(group = .imp), alpha = 0.75, col = "gray", linewidth = 0.25) +
+  geom_step(aes(group = .imp), col = "gray", linewidth = 0.25) +
   coord_cartesian(xlim = c(0, 10)) + #, ylim = c(0, 2)) +
   # Add the weighted one
   geom_step(
@@ -784,6 +797,7 @@ p_subdists <- imp_dats_cens |>
 
 p_ids / p_subdists
 
+# This bastard is the heavy one!
 ggsave(
   filename = "analysis/figures/cens_appendix.pdf", 
   width = 9,
