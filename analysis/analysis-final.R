@@ -49,6 +49,30 @@ df_predictors[, names(miss_props)[order(miss_props, decreasing = TRUE)]] |>
 
 ggmice::plot_pattern(df_predictors, npat = 100, rotate = TRUE)
 
+library(gtsummary)
+tar_load(applied_dat_raw)
+applied_dat_raw[, !c("id_new", "AA_CTY", "CENTRE_allo1")] |>
+  tbl_summary(by = "sweat_allo1") |>
+  add_p()
+
+applied_dat_raw[!is.na(sweat_allo1)] |>
+  ggplot(aes(hb_allo1, fill = sweat_allo1)) +
+  geom_density(alpha = 0.5)
+
+applied_dat_raw[!is.na(sweat_allo1)] |>
+  ggplot(aes(pb_allo1, fill = sweat_allo1)) +
+  geom_density(alpha = 0.5)
+
+applied_dat_raw[!is.na(sweat_allo1)] |>
+  ggplot(aes(log(wbc_allo1 + 0.1), fill = sweat_allo1)) +
+  geom_density(alpha = 0.5)
+
+cor(
+  as.numeric(applied_dat_raw$sweat_allo1),
+  applied_dat_raw$wbc_allo1,
+  use = "complete.obs"
+)
+
 
 
 # Check imputed values vs observed? For continuous? -----------------------
@@ -128,6 +152,64 @@ pooled_mods[!(term %in% c("intdiagallo_decades", "year_allo1_decades")) & mod_ty
   )
 
 
+modz <- coxph(
+  Surv(time_ci_adm, status_ci_adm == 2) ~ sweat_allo1 * ruxo_preallo1,
+  data = applied_dat$dat
+)
+
+modz
+
+plot(cox.zph(modz))
+
+hi <- copy(applied_dat_raw)
+hi[, sweat := forcats::fct_na_value_to_level(sweat_allo1, level = "(missing)")]
+hi$sweat
+modo <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ sweat,
+                data = hi)
+
+df <- copy(applied_dat$dat)
+sm_preds <- applied_dat$sm_predictors
+
+colz <- c(
+  "ruxo_preallo1",
+  "KARNOFSK_threecat",
+  "vchromos_preallo1",
+  "sweat_allo1",
+  "WEIGLOSS_allo1",
+  "hctci_risk"
+)
+
+df[, (colz) := lapply(.SD, function(col) {
+  forcats::fct_na_value_to_level(col, level = "(Missing)")
+}), .SDcols = colz]
+
+modo <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ ruxo_preallo1,
+                data = df)
+plot(modo, cause = 1, legend.cex = 0.75, atrisk = FALSE)
+
+
+modo <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ KARNOFSK_threecat,
+                data = df)
+plot(modo, cause = 1, legend.cex = 0.75, atrisk = FALSE)
+
+
+modo <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ vchromos_preallo1,
+                data = df)
+plot(modo, cause = 1, legend.cex = 0.75, atrisk = FALSE)
+
+
+modo <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ sweat_allo1,
+                data = df)
+plot(modo, cause = 1, legend.cex = 0.75, atrisk = FALSE)
+
+modo <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ WEIGLOSS_allo1,
+                data = df)
+plot(modo, cause = 1, legend.cex = 0.75, atrisk = FALSE)
+
+modo <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ hctci_risk,
+                data = df)
+plot(modo, cause = 1, legend.cex = 0.75, atrisk = FALSE)
+
 mods_imp_dats[mod_type == "mods_fg" & method == "SMC-FCS Fine-Gray"]$mod |>
   pool() |>
   howManyImputations::how_many_imputations()
@@ -159,6 +241,29 @@ applied_dat$dat[, !c("id")] |>
 
 # Eventually do not show submps,
 # in supplement, table with effects + CIs on cause-specific hazards
+
+library(kableExtra)
+pooled_mods <- mods_imp_dats[, .(
+  summ = list(tidy(pool(mod), conf.int = TRUE))
+), by = c("method", "mod_type")][, unlist(summ, recursive = FALSE), by = c("method", "mod_type")]
+
+# See table 4 bartlett, make a table for FG1, CSH1 and CSH2 (log HRs)
+pooled_mods[, summ := paste0(
+  round(estimate, 2), " [",
+  round(conf.low, 2), ", ",
+  round(conf.high, 2), "]"
+)]
+
+pooled_mods[mod_type == "mods_cs1"] |>
+  dcast(term ~ method, value.var = "summ") |>
+  kbl() |>
+  kable_styling("striped")
+
+
+# Check the CS hazards (make a table) -------------------------------------
+
+
+
 
 # Proportionality checks --------------------------------------------------
 

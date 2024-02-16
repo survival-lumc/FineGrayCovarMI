@@ -1,6 +1,31 @@
 process_applied_dat <- function(dat_raw) {
 
-  # Edit a few variables
+  # In original study, continuous progression patients (n = 123), were all
+  # singly imputed as relapse/progressed at 28 days (approx. 0.92 months)
+  t_cont_prog <- 12 * 28 / 365.25
+
+  # Make temporary indicator
+  dat_raw[time_ci_adm == t_cont_prog & status_ci_adm == 1, cont_progr_ind := 1]
+
+  # If patients died prior to 56 days -> assume progressed 1 day prior to death
+  # If patients dies before 28 days -> consider as NRM
+  dat_raw[cont_progr_ind == 1 & time_os_adm <= 12 * 56 / 365.25 & status_os_adm == 1, ':=' (
+    time_ci_adm = ifelse(time_os_adm <= t_cont_prog, time_os_adm, time_os_adm - 12 / 365.25),
+    status_ci_adm = ifelse(time_os_adm <= t_cont_prog, 2, 1)
+  )]
+
+  # If patients had second alloSCT before 56 days -> assume progressed at second alloSCT - 7days
+  dat_raw[cont_progr_ind == 1 & time_ci_cgvh <= 12 * 56 / 365.25 & status_ci_cgvh == 3, ':=' (
+    time_ci_adm = time_ci_cgvh - 12 * 7 / 365.25,
+    status_ci_adm = 1
+  )]
+
+  # For all others: assume progressed at 28 days plus runif(-14, 14) days
+  dat_raw[cont_progr_ind == 1 & time_ci_adm == t_cont_prog, ':=' (
+    time_ci_adm = t_cont_prog + runif(.N, min = -t_cont_prog / 2, max = t_cont_prog / 2)
+  )]
+
+  # Edit a few predictors
   dat_raw[, ':=' (
     intdiagallo_decades = intdiagtr_allo1 / 10, # now in decades
     year_allo1_decades = (year_allo1 - 10) / 10, # most recent year is zero

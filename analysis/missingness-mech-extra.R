@@ -19,6 +19,7 @@ theme_set( # set base size to 14 instead of 16
 
 tar_load(applied_dat)
 tar_load(applied_dat_raw)
+dat <- applied_dat$dat
 
 
 
@@ -72,4 +73,43 @@ plot(
 
 
 #https://stats.stackexchange.com/questions/398869/r-how-to-fit-a-glmm-in-nlme
-apply(array, margin, ...)
+
+preds <- applied_dat$sm_predictors
+dat$CCA_ind <- as.numeric(complete.cases(dat[, ..preds]))
+
+
+mod_miss <- brm(
+  as.numeric(!is.na(hctci_risk)) ~ #ns(year_allo1, 4) +
+    #PATSEX +
+    #intdiagtr_allo1 +
+    #donrel_bin +
+    #ric_allo1 +
+    #cmv_match +
+    #submps_allo1 +
+    #tbi_allo1 +
+    #KARNOFSK_threecat +
+    #status_os_adm * time_os_adm +
+    year_allo1 +
+    (1 | AA_CTY / CENTRE_allo1), #/ CENTRE_allo1),
+  data = data.frame(applied_dat_raw),
+  family = bernoulli
+)
+
+
+
+
+mod_miss <- glmmTMB(
+  !is.na(hctci_risk) ~ ns(year_allo1, 4) +
+    PATSEX +
+    intdiagtr_allo1 +
+    donrel_bin +
+    ric_allo1 +
+    cmv_match +
+    submps_allo1 +
+    tbi_allo1 +
+    KARNOFSK_threecat +
+    status_os_adm * time_os_adm +
+    (1 | AA_CTY / CENTRE_allo1), #/ CENTRE_allo1),
+  data = applied_dat_raw,
+  family = binomial(link = "logit")
+)
