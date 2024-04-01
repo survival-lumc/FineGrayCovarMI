@@ -171,7 +171,9 @@ p2 <- dat_true[X == 0 & Z == 0] |>
 # Lower panel
 dat_p3 <- dat_true[, .(
   HR_cs = cs_haz[X == 1] / cs_haz[X == 0],
+  #HR_subdist = log(1 - cuminc[X == 1]) / log(1 - cuminc[X == 0])
   HR_subdist = subdist_haz[X == 1] / subdist_haz[X == 0]
+  # Use Grambauer eq. (7) instead?
 ), by = c("time", "cause", "prob_space", "failure_time_model")] |>
   melt(
     variable.name = "HR_type",
@@ -254,6 +256,12 @@ coefs_main[, dens := approxfun(density(relbias))(relbias), by = c(
   "failure_time_model",
   "prob_space"
 )]
+
+# Some early processing of MC CIs
+crit <- qnorm((1 - 0.95) / 2, lower.tail = FALSE)
+dodge_w <- 0.75
+
+df_summ <- data.table(sim_summ$summ)
 ```
 
 ### Relative bias
@@ -302,14 +310,26 @@ for (i in seq_along(covars)) {
       alpha = 1
     ) +
     stat_summary(
-      fun = mean,
+      fun = function(x) mean(x),
+      fun.min = function(x) mean(x) - crit * (sd(x) / sqrt(length(x))),
+      fun.max = function(x) mean(x) + crit * (sd(x) / sqrt(length(x))),
       geom = "crossbar",
-      fatten = 1.5,
-      #linewidth = 0.5,
-      col = "black",
-      alpha = 0.75,
-      lineend = "round"
+      #lineend = "round",
+      alpha = 0.5,
+      #col = NULL,
+      fill = "black",
+      fatten = 1,
+      linewidth = 0.25
     ) +
+    # stat_summary(
+    #   fun = mean,
+    #   geom = "crossbar",
+    #   fatten = 1.5,
+    #   #linewidth = 0.5,
+    #   col = "black",
+    #   alpha = 0.75,
+    #   lineend = "round"
+    # ) +
     scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
     labs(x = "Method", y = "100 * (Estimate - True) / True (%)")
   
@@ -342,10 +362,6 @@ for (i in seq_along(covars)) {
 #| fig-width: 7
 #| output: asis
 
-crit <- qnorm((1 - 0.95) / 2, lower.tail = FALSE)
-dodge_w <- 0.75
-
-df_summ <- data.table(sim_summ$summ)
 df_summ_var <- df_summ[stat %in% c("modelse", "empse", "cover") & method != "Full data"]
 df_summ_var[, stat := factor(
   stat, 
@@ -484,18 +500,18 @@ for (i in seq_along(pats)) {
   
   p_cumincs <- df_summ_pred[stat == "thetamean" & eval(expr_pat)] |>
     ggplot(aes(time, est, group = method, col = method)) +
+    geom_line(
+      data = preds_df[censoring_type != "admin" & eval(expr_pat)],
+      aes(y = cuminc),
+      col = "black",
+      linewidth = 1
+    ) +
     geom_line(aes(linetype = method), linewidth = 1) +
     geom_point(aes(shape = method)) +
     facet_grid(
       prob_space * failure_time_model * censoring_type ~ .,
       labeller = all_labels,
       scales = "free"
-    ) +
-    geom_line(
-      data = preds_df[censoring_type != "admin" & eval(expr_pat)],
-      aes(y = cuminc),
-      col = "black",
-      linewidth = 1
     ) +
     scale_color_manual(values = cols[c(3, 1, 2, 6, 4, 5)]) +
     theme(
@@ -508,7 +524,7 @@ for (i in seq_along(pats)) {
       linetype = "Method",
       shape = "Method",
       x = "Time",
-      y = "Baseline cumulative incidence cause 1"
+      y = "Cumulative incidence cause 1"
     )
 
   p_diffs <- preds_df[, .(est = mean(pooled_pred, na.rm = TRUE)), by = c(
@@ -541,7 +557,7 @@ for (i in seq_along(pats)) {
       linetype = "Method",
       shape = "Method",
       x = "Time",
-      y = "Difference predicted - true baseline cumulative incidence cause 1"
+      y = "Difference predicted - true cumulative incidence cause 1"
     )
   
   p_rmse <- df_summ_pred[stat == "mse" & eval(expr_pat)] |>

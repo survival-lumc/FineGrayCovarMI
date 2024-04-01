@@ -29,9 +29,32 @@ np_curves <- prodlim(
   data = dat
 )
 
-plot(np_curves, cause = "stacked")
-plot(np_curves, cause = 1, col = "blue") # note the jump in cont prog pats
-plot(np_curves, cause = 2, add = TRUE, lty = 2)
+cairo_pdf("analysis/figures/cuminc_mf.pdf", width = 9)
+par(family = "Roboto Condensed")
+plot(
+  np_curves,
+  cause = "stacked",
+  col = cols[c(4, 6)],
+  ylab = "Stacked cumulative incidence",
+  lty = c(1, 2),
+  xlab = "Time since alloHCT (months)",
+  percent = FALSE,
+  atrisk.at = seq(0, 60, by = 10),
+  atrisk.col = "black",
+  atrisk.title = "At risk:",
+  legend = FALSE
+)
+legend(
+  x = 0, y = 0.95,
+  legend = c("Relapse", "Non-relapse mortality"),
+  lty = c(1, 2),
+  col = cols[c(4, 6)],
+  bty = 'n',
+  lwd = c(3, 3)
+)
+dev.off()
+#plot(np_curves, cause = 1, col = "blue") # note the jump in cont prog pats
+#plot(np_curves, cause = 2, add = TRUE, lty = 2)
 
 
 # Descriptives table? -----------------------------------------------------
@@ -51,29 +74,6 @@ ggmice::plot_pattern(df_predictors, npat = 100, rotate = TRUE)
 
 library(gtsummary)
 tar_load(applied_dat_raw)
-applied_dat_raw[, !c("id_new", "AA_CTY", "CENTRE_allo1")] |>
-  tbl_summary(by = "sweat_allo1") |>
-  add_p()
-
-applied_dat_raw[!is.na(sweat_allo1)] |>
-  ggplot(aes(hb_allo1, fill = sweat_allo1)) +
-  geom_density(alpha = 0.5)
-
-applied_dat_raw[!is.na(sweat_allo1)] |>
-  ggplot(aes(pb_allo1, fill = sweat_allo1)) +
-  geom_density(alpha = 0.5)
-
-applied_dat_raw[!is.na(sweat_allo1)] |>
-  ggplot(aes(log(wbc_allo1 + 0.1), fill = sweat_allo1)) +
-  geom_density(alpha = 0.5)
-
-cor(
-  as.numeric(applied_dat_raw$sweat_allo1),
-  applied_dat_raw$wbc_allo1,
-  use = "complete.obs"
-)
-
-
 
 # Check imputed values vs observed? For continuous? -----------------------
 
@@ -103,15 +103,114 @@ mods_imp_dats <- impdats[, .(
     value.name = "mod"
   )
 
+# Make baseline patient
 times_preds <- seq(0.01, 60, by = 0.1)
+newpat <- dat[1, ]
+newpat[, (sm_predictors) := lapply(.SD, function(col) {
+  if (is.factor(col)) levels(col)[1] else 0
+}), .SDcols = sm_predictors]
+
+# Compute baseline cumincs + SEs
 basecuminc_imp_dats <- mods_imp_dats[mod_type == "mods_fg", .(
-  "base" = list(
-    cbind.data.frame(
-      time = times_preds,
-      cuminc = 1 - predictCox(object = mod[[1]], times = times_preds, centered = FALSE)$survival
+  "base" = list({
+    obj <- predictCox(
+      object = mod[[1]],
+      times = times_preds,
+      type = "survival",
+      newdata = newpat,
+      se = TRUE,
+      store.iid = "minimal"
     )
-  )
+    cbind.data.frame(
+      "times" = times_preds,
+      "cuminc" = 1 - drop(obj$survival),
+      "se" = drop(obj$survival.se)
+    )
+  })
 ), by = c("tar_batch", "tar_rep", "method")]
+
+# https://rdrr.io/github/survival-lumc/CauseSpecCovarMI/src/R/illustrative-analysis-helpers.R
+# Shouldn't the CI be based on t-distribution??
+preds_full <- basecuminc_imp_dats[, unlist(base, recursive = FALSE), by = c(
+  "tar_batch", "tar_rep", "method"
+)]
+
+preds_full[, ':=' (
+  p  = cuminc,
+  p_trans = cloglog(cuminc),
+  var_p = (se)^2
+)]
+preds_full[, Ui := var_p / (log(1 - p) * (1 - p))^2]
+by_vars <- c("method", "times")
+
+preds_summ <- preds_full[, .(
+  m = .N,
+  Ubar = mean(Ui),
+  B = stats::var(p_trans),
+  Qbar = mean(p_trans)
+), by = by_vars]
+
+preds_summ[, total_var := Ubar + (1 + m^-1) * B, by = by_vars]
+
+preds_final <- preds_summ[, .(
+  p_pooled = inv_cloglog(Qbar),
+  CI_low = inv_cloglog(Qbar - stats::qnorm(0.975) * sqrt(total_var)),
+  CI_upp = inv_cloglog(Qbar + stats::qnorm(0.975) * sqrt(total_var))
+), by = by_vars]
+preds_final[p_pooled == 0, c("CI_low", "CI_upp") := 0]
+preds_final[, CI_width := CI_upp - CI_low]
+
+
+p_cuminc <- preds_final |>
+  ggplot(aes(times, p_pooled, group = method)) +
+  #geom_ribbon(aes(ymin = CI_low, ymax = CI_upp, fill = method), alpha = 0.5) +
+  geom_step(aes(col = method, linetype = method), linewidth = 0.75) +
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
+  coord_cartesian(ylim = c(0, 0.225)) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    x = "Time since alloHCT (months)",
+    y = "(Pooled) Baseline cumulative incidence"
+  )
+
+p_ci_width <- preds_final |>
+  ggplot(aes(times, CI_width, group = method)) +
+  geom_step(aes(col = method, linetype = method), linewidth = 0.75) +
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
+  coord_cartesian(ylim = c(0, 0.225)) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    x = "Time since alloHCT (months)",
+    y = "(Pooled) 95% Confidence interval width"
+  )
+
+
+p_comb <- p_cuminc + p_ci_width & xlab(NULL) & theme(legend.position = "top")
+
+# p_comb +
+#   plot_layout(
+#     axis_titles = "collect",
+#     guides = "collect"
+#   )
+
+p_final <- wrap_elements(panel = p_comb + plot_layout(guides = "collect")) +
+  labs(tag = "Time since alloHCT (months)") +
+  theme(
+    plot.tag = element_text(size = rel(1)),
+    plot.tag.position = "bottom"
+  )
+
+ggsave(
+  plot = p_final,
+  filename = "analysis/figures/applied_base_cuminc.pdf",
+  width = 11,
+  scale = 1,
+  height = 7,
+  device = cairo_pdf
+)
+
 
 basecuminc_imp_dats[, unlist(base, recursive = FALSE), by = c("tar_batch", "tar_rep", "method")][, .(
   pred = inv_cloglog(mean(cloglog(cuminc)))
@@ -119,20 +218,92 @@ basecuminc_imp_dats[, unlist(base, recursive = FALSE), by = c("tar_batch", "tar_
   ggplot(aes(time, pred, group = method, col = method)) +
   geom_step(aes(linetype = method), linewidth = 1) +
   scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
-  coord_cartesian(ylim = c(0, 0.25)) +
+  coord_cartesian(ylim = c(0, 0.225)) +
   labs(
     col = "Method",
     linetype = "Method",
     x = "Time since alloHCT (months)",
-    y = "Baseline cumulative incidence function"
+    y = "(Pooled) Baseline cumulative incidence function"
   )
+
+ggsave(
+  filename = "analysis/figures/applied_base_cuminc.pdf",
+  width = 10,
+  scale = 1,
+  height = 7,
+  device = cairo_pdf
+)
 
 # Exponentiate here if needed
 pooled_mods <- mods_imp_dats[, .(
   summ = list(tidy(pool(mod), conf.int = TRUE, exponentiate = TRUE))
 ), by = c("method", "mod_type")][, unlist(summ, recursive = FALSE), by = c("method", "mod_type")]
 
-pooled_mods[!(term %in% c("intdiagallo_decades", "year_allo1_decades")) & mod_type == "mods_fg"] |>
+df_plot <- pooled_mods[!(
+  term %in% c("intdiagallo_decades", "year_allo1_decades", "submps_allo1sMF")
+) & mod_type == "mods_fg"]
+
+df_plot[, method := factor(
+  method,
+  levels = c(
+    "SMC-FCS Fine-Gray",
+    "SMC-FCS cause-spec",
+    "MICE cause-spec",
+    "MICE subdist",
+    "Compl. cases"
+  ),
+  labels = c(
+    "SMC-FCS\nFine-Gray",
+    "SMC-FCS\ncause-spec",
+    "MICE\ncause-spec",
+    "MICE\nsubdist",
+    "Complete\ncases"
+  )
+)]
+
+df_plot[, term := factor(
+  term,
+  levels = c(
+    "ric_allo1reduced",
+    "cmv_matchOther",
+    "vchromos_preallo1Abnormal",
+    "donrel_binOther",
+    "hb_allo1",
+    "hctci_riskintermediate risk (1-2)",
+    "hctci_riskhigh risk (>= 3)",
+    "KARNOFSK_threecat80",
+    "KARNOFSK_threecat<80",
+    "sweat_allo1Yes",
+    "age_allo1_decades",
+    "PATSEXMale",
+    "pb_allo1",
+    "ruxo_preallo1yes",
+    "tceldepl_binyes",
+    "wbc_allo1",
+    "WEIGLOSS_allo1Yes"
+  ),
+  labels = c(
+    "Conditioning (reduced)",
+    "CMV match (other)",
+    "Cytogenetics (abnormal)",
+    "Don. relation (other)",
+    "Hemoglobin (per 5 g/dL)",
+    "HCT-CI (1-2)",
+    "HCT-CI (>= 3)",
+    "Karnofsky (=80)",
+    "Karnofsky (<=70)",
+    "Night sweats",
+    "Pat. age (decades)",
+    "Pat. sex (male)",
+    "PB Blasts (per 5%)",
+    "Ruxolitinib given",
+    "T-cell depletion",
+    "WBC count (log)",
+    "Weight loss"
+  )
+)]
+
+df_plot |>
   ggplot(aes(term, estimate, group = method, col = method, shape = method)) +
   geom_point(position = position_dodge(width = 0.75)) +
   geom_pointrange(
@@ -141,16 +312,41 @@ pooled_mods[!(term %in% c("intdiagallo_decades", "year_allo1_decades")) & mod_ty
   ) +
   coord_flip() +
   geom_hline(yintercept = 1, linetype = "dotted") +
-  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
+  scale_color_manual(values = cols[rev(c(1, 2, 6, 4, 5))]) +
+  guides(
+    colour = ggplot2::guide_legend("Method:", byrow = TRUE, reverse = TRUE),
+    shape = ggplot2::guide_legend("Method:", byrow = TRUE, reverse = TRUE)
+  ) +
+  theme_minimal(base_size = 16, base_family = "Roboto Condensed") +
   theme(legend.position = "top") +
   scale_x_discrete(limits = rev) +
   scale_y_continuous(
    trans = "log",
    breaks = c(0.5, 1, 1.5, 2, 3)
-   #breaks = log(c(0.5, 0.75, 1, 1.5, 2, 3)),
-   #labels = c(0.5, 0.75, 1, 1.5, 2, 3)
+  ) +
+  ggstats::geom_stripped_cols(col = NA) +
+  theme(
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    axis.text.y = element_text(hjust = 0),
+    axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0))
+  ) +
+  labs(
+    x = "Coefficient",
+    y = "Hazard ratio relapse/progression (95% CI)"
   )
 
+ # scale_color_manual(
+  #  values = c("")
+  #)
+
+ggsave(
+  filename = "analysis/figures/applied_forest.pdf",
+  width = 8,
+  scale = 1.15,
+  height = 10,
+  device = cairo_pdf
+)
 
 modz <- coxph(
   Surv(time_ci_adm, status_ci_adm == 2) ~ sweat_allo1 * ruxo_preallo1,
@@ -258,6 +454,156 @@ pooled_mods[mod_type == "mods_cs1"] |>
   dcast(term ~ method, value.var = "summ") |>
   kbl() |>
   kable_styling("striped")
+
+df_tbl <- dcast(pooled_mods, term + method ~ mod_type, value.var = "summ")
+df_tbl[, term := factor(
+  term,
+  levels = c(
+    "ric_allo1reduced",
+    "cmv_matchOther",
+    "vchromos_preallo1Abnormal",
+    "donrel_binOther",
+    "hb_allo1",
+    "hctci_riskintermediate risk (1-2)",
+    "hctci_riskhigh risk (>= 3)",
+    "intdiagallo_decades",
+    "KARNOFSK_threecat80",
+    "KARNOFSK_threecat<80",
+    "submps_allo1sMF",
+    "sweat_allo1Yes",
+    "age_allo1_decades",
+    "PATSEXMale",
+    "pb_allo1",
+    "ruxo_preallo1yes",
+    "tceldepl_binyes",
+    "wbc_allo1",
+    "WEIGLOSS_allo1Yes",
+    "year_allo1_decades"
+  ),
+  labels = c(
+    "Conditioning: reduced",
+    "CMV match: other",
+    "Cytogenetics: abnormal",
+    "Don. relation: other",
+    "Hemoglobin (per $5$ g/dL)",
+    "HCT-CI ($1-2$)",
+    "HCT-CI ($\\geq 3$)",
+    "Interval diagnosis to alloHCT (decades)",
+    "Karnofsky ($=80$)",
+    "Karnofsky ($\\leq 70$)",
+    "MF subtype: sMF",
+    "Night sweats: yes",
+    "Pat. age (decades)",
+    "Pat. sex: male",
+    "PB Blasts (per $5$\\%)",
+    "Ruxolitinib given: yes",
+    "T-cell depletion: yes",
+    "WBC count (log)",
+    "Weight loss: yes",
+    "Year of alloHCT (decades)"
+  )
+)]
+
+
+tb_breaks <- rep(5, length(levels(df_tbl$term)))
+names(tb_breaks) <- levels(df_tbl$term)
+
+df_tbl[order(term)][, !c("term")] |>
+  kbl(
+    format = "latex",
+    longtable = TRUE,
+    booktabs = TRUE,
+    caption = "Longtable",
+    align = c("l", "r", "r", "r"),
+    col.names = c(
+      "Term + method",
+      "Relapse subdist.~log HR",
+      "Relapse cause-spec.~log HR",
+      "NRM cause-spec.~log HR"
+    ),
+    escape = FALSE
+  ) |>
+  kable_styling(
+    latex_options = c("repeat_header"),
+    repeat_header_continued = TRUE,
+    repeat_header_method = "replace",
+    font_size = 9#,
+    #latex_options = c("repeat_header")
+  ) |>
+  pack_rows(
+    index = tb_breaks,
+    escape = FALSE
+    #extra_latex_after = "\\rowcolor{gray!6}"
+    #index =c(" " = 0, "Group 1" = 5, "Group 2" = 0)
+  )
+  #collapse_rows(columns =1:2, valign = "top")
+
+
+# Tbl summary
+df <- applied_dat$dat
+df_predz <- copy(df[, ..sm_predictors]) #|>
+# Re-transform for descriptives
+df_predz[, ':=' (
+  age_allo1_decades = (age_allo1_decades + 6) * 10,
+  year_allo1_decades = year_allo1_decades * 10 + 10 + 2009,
+  intdiagallo_decades = intdiagallo_decades * 10,
+  pb_allo1 = pb_allo1 * 5,
+  hb_allo1 = hb_allo1 * 5 + 10,
+  wbc_allo1 = exp(wbc_allo1 + log(15.1))
+)]
+
+attr(df_predz$hctci_risk, "label") <- "HCT-CI risk category"
+attr(df_predz$KARNOFSK_threecat, "label") <- "Karnosfky performance score"
+attr(df_predz$tceldepl_bin, "label") <- "T-cell depletion (in- or ev-vivo)"
+attr(df_predz$age_allo1_decades, "label") <- "Patient age (years)"
+attr(df_predz$cmv_match, "label") <- "Patient/donor CMV match"
+attr(df_predz$intdiagallo_decades, "label") <- "Interval diagnosis-transplantation (years)"
+attr(df_predz$year_allo1_decades, "label") <- "Year of transplantation"
+
+library(kableExtra)
+tbl_summary(
+  df_predz,
+  missing_text = "(Missing)",
+  type = all_dichotomous() ~ "categorical"
+) |>
+  as_kable_extra(
+    format = "latex",
+    booktabs = TRUE,
+    longtable = TRUE
+  )
+
+
+df <- applied_dat$dat
+varz <- c("time_ci_adm", "status_ci_adm", sm_predictors)
+df_actual <- df[, ..varz]
+df_actual[, CCA_ind := as.numeric(complete.cases(.SD))]
+df_actual[, status_ci_adm := factor(status_ci_adm, levels = c(2, 1, 0))]
+
+library(rms)
+dd <- datadist(df_actual)
+dd$limits$status_ci_adm[2] <- 2
+dd$limits$year_allo1_decades[2] <- 0
+options(datadist = "dd")
+
+modm <- lrm(#CCA_ind ~ intdiagallo_decades +
+  !is.na(KARNOFSK_threecat) ~ intdiagallo_decades +
+              rcs(year_allo1_decades, 4) +
+              donrel_bin +
+              submps_allo1 +
+              ric_allo1 +
+              cmv_match +
+              tceldepl_bin +
+              PATSEX +
+              age_allo1_decades +
+              status_ci_adm *
+              rcs(time_ci_adm, 4),
+            data = df_actual)
+
+modm
+ggplot(Predict(modm, time_ci_adm, status_ci_adm, ref.zero = TRUE))
+ggplot(Predict(modm, year_allo1_decades, ref.zero = TRUE))
+
+
 
 
 # Check the CS hazards (make a table) -------------------------------------
