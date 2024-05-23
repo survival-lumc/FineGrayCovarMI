@@ -1,0 +1,577 @@
+---
+title: "Supplement to: Multiple imputation of missing covariates when using the Fine--Gray model"
+author: 
+  - name: E. F. Bonneville
+    affil-id: 1
+  - name: J. Beyersmann
+    affil-id: 2
+  - name: R. H. Keogh
+    affil-id: 3
+  - name: J. W. Bartlett
+    affil-id: 3
+  - name: T. P. Morris
+    affil-id: 4
+  - name: N. Polverelli
+    affil-id: 5
+  - name: L. C. de Wreede
+    affil-id: 1,6,*
+  - name: and H. Putter
+    affil-id: 1,7,*
+affiliations:
+  - id: 1
+    name: Department of Biomedical Data Sciences, Leiden University Medical Center, the Netherlands
+  - id: 2
+    name: Institute of Statistics, Ulm University, Germany
+  - id: 3
+    name: Department of Medical Statistics, London School of Hygiene and Tropical Medicine, United Kingdom
+  - id: 4
+    name: MRC Clinical Trials Unit at UCL, United Kingdom
+  - id: 5
+    name: Unit of Bone Marrow Transplantation, Division of Hematology, Fondazione IRCCS Policlinico San Matteo di Pavia, Italy
+  - id: 6
+    name: DKMS Clinical Trials Unit, Germany
+  - id: 7
+    name: Mathematical Institute, Leiden University, the Netherlands
+  - id: "*"
+    name: Shared senior authorship
+format: 
+  pdf:
+    documentclass: article
+    number-sections: true
+    code-block-border-left: false
+    papersize: a4
+    geometry:
+      - margin=1in
+    template-partials:
+      - title.tex
+    include-in-header:
+      text: |
+        \usepackage[noblocks]{authblk}
+        \renewcommand*{\Authsep}{, }
+        \renewcommand*{\Authand}{, }
+        \renewcommand*{\Authands}{, }
+        \renewcommand\Affilfont{\small}
+        \usepackage{booktabs}
+        \usepackage{array}
+        \usepackage{multirow}
+        \usepackage{longtable}
+        \renewcommand{\thesection}{S\arabic{section}}
+execute:
+  echo: true
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r}
+#| label: setup
+#| warning: false
+#| echo: false
+#| fig-cap-location: top
+
+# Add this to quarto pipeline after
+source(here::here("packages.R"))
+invisible(lapply(list.files(here::here("R"), full.names = TRUE), source))
+options(contrasts = rep("contr.treatment", 2))
+
+# Theme tings
+cols <- c("#CABEE9", "#7C7189", "#FAE093", "#D04E59", "#BC8E7D", "#2F3D70")
+theme_set( # set base size to 14 instead of 16
+  theme_light(base_size = 16, base_family = "Roboto Condensed") +
+    theme(
+      strip.background = element_rect(fill = cols[2], colour = "white"),
+      strip.text = element_text(colour = 'white')
+    )
+)
+```
+
+# Minimal code example
+
+This is the minimal `R` code companion to section 3.4 of main manuscript. The parameters from the simulation study scenario with $p = 0.15$, random censoring, and correctly specified Fine--Gray were used to generate the example dataset below.
+
+```{r}
+#| echo: false
+
+# Generate dataset
+set.seed(202405)
+
+params <- list(
+  "cause1" = list(
+    "formula" = ~ X + Z,
+    "betas" = c(0.75, 0.5),
+    "p" = 0.15,
+    "base_rate" = 1,
+    "base_shape" = 0.75
+  ),
+  "cause2" = list(
+    "formula" = ~ X + Z,
+    "betas" = c(0.75, 0.5),
+    "base_rate" = 1,
+    "base_shape" = 0.75
+  )
+)
+
+dat_minimal <- generate_dataset(
+  n = 2000,
+  args_event_times = list(
+    mechanism = "correct_FG",
+    params = params,
+    censoring_type = "exponential"
+  ),
+  args_missingness = list(
+    mech_params = list(
+      "prob_missing" = 0.4,
+      "mechanism_expr" = "1.5 * Z"
+    )
+  )
+)
+dat_minimal[, ':=' (time = round(time, digits = 6), Z = round(Z, digits = 3))]
+dat <- data.frame(dat_minimal[order(id), c("id", "time", "D", "X", "Z")])
+rownames(dat) <- NULL
+
+#See suppl of https://onlinelibrary.wiley.com/doi/full/10.1002/sim.8387
+```
+
+
+```{r loading}
+#| warning: false
+
+# Load libraries
+library(data.table)
+library(survival)
+library(kmi)
+library(mice)
+library(smcfcs)
+
+# Minimal dataset
+head(dat, n = 10)
+sapply(dat, class)
+nrow(dat)
+```
+
+1. Add columns $\hat{H}_1(T)$ and $\hat{H}_2(T)$ to the original data, which are the marginal cause-specific cumulative hazards for each competing risk evaluated at an individual's event or censoring time (obtained using the Nelson--Aalen estimator).
+
+```{r}
+# Add cause-specific event indicators + cumulative hazards
+dat$D1 <- as.numeric(dat$D == 1)
+dat$D2 <- as.numeric(dat$D == 2)
+dat$H1 <- mice::nelsonaalen(data = dat, timevar = "time", statusvar = "D1")
+dat$H2 <- mice::nelsonaalen(data = dat, timevar = "time", statusvar = "D2")
+```
+
+2. Multiply impute the potential censoring for those failing from cause 2 using \{kmi\}, yielding $m$ censoring complete datasets (i.e. with "complete" $V$). Any completely observed covariates that are known to affect the probability of being censored should be included as predictors in the model for the censoring process. \{kmi\} imputes based on stratified Kaplan--Meier when $Z$ are categorical, and based on a Cox model when at least one of $Z$ are continuous.
+
+<!-- Mention administrative censoring here -->
+
+```{r}
+# Multiply impute the censoring times
+cens_imps <- kmi(
+  formula = Surv(time, D != 0) ~ 1, # Additional predictors added here
+  data = dat,
+  etype = D,
+  failcode = 1, # Specify event of interest
+  nimp = 5
+)
+```
+
+3. In each censoring complete dataset, add an additional column $\hat{\Lambda}_1(V)$. This takes the value of the marginal cumulative subdistribution hazard for cause 1 at an individual's observed or imputed subdistribution time, obtained with the Nelson--Aalen estimator based on $I(D = 1)$ and imputed $V$.
+
+```{r}
+# Preparation for covariate imputation:
+list_to_impute <- lapply(cens_imps$imputed.data, function(imp_dat) {
+  
+  # Adjust to new ordering from kmi (cause 2 individuals appended at bottom)
+  dat_to_impute <- cbind(cens_imps$original.data, imp_dat)
+  
+  # Compute/add Lambda_1(V) in each imputed dataset
+  dat_to_impute$Lambda1 <- mice::nelsonaalen(
+    data = dat_to_impute, 
+    timevar = "newtimes", # kmi naming for V
+    statusvar = "D1" # I(D=1)
+  )
+  return(dat_to_impute)
+})
+
+# newevent is equal to I(D=1)
+head(list_to_impute[[1]])
+```
+
+4. In each censoring complete dataset (each with different $V$ and $\hat{\Lambda}_1(V)$, but same $\hat{H}_1(T)$ and $\hat{H}_2(T)$), create a single imputed dataset using the desired covariate imputation method(s).
+
+```{r}
+# Prepare predictor matrices for MICE using the first censoring complete dataset
+predmat_cs_approx <- predmat_fg_approx <- mice::make.predictorMatrix(list_to_impute[[1]])
+predmat_cs_approx[] <- predmat_fg_approx[] <- 0
+predmat_cs_approx["X", c("Z", "D1", "D2", "H1", "H2")] <- 1
+predmat_fg_approx["X", c("Z", "D1", "Lambda1")] <- 1
+predmat_fg_approx
+
+# Prepare the methods:
+# - Approx methods: model type for X | Z, outcome
+methods_approx <- mice::make.method(list_to_impute[[1]])
+# - SMC methods: proposal model for X | Z (need to use {smcfcs} naming)
+methods_smcfcs <- mice::make.method(
+  list_to_impute[[1]],
+  defaultMethod = c("norm", "logreg", "mlogit", "podds")
+)
+methods_smcfcs
+```
+
+```{r}
+#| label: step_4
+#| results: false
+
+# Impute X
+list_imps <- lapply(list_to_impute, function(imp_dat) {
+
+  m <- 1
+  iters <- 10
+  
+  imps_cs_approx <- mice(
+    data = imp_dat,
+    m = m,
+    maxit = iters,
+    method = methods_approx,
+    predictorMatrix = predmat_cs_approx
+  )
+
+  imps_fg_approx <- mice(
+    data = imp_dat,
+    m = m,
+    maxit = iters,
+    method = methods_approx,
+    predictorMatrix = predmat_fg_approx
+  )
+
+  imps_cs_smc <- smcfcs(
+    originaldata = imp_dat,
+    smtype = "compet",
+    smformula = list(
+      "Surv(time, D == 1) ~ X + Z",
+      "Surv(time, D == 2) ~ X + Z"
+    ),
+    method = methods_smcfcs,
+    m = m,
+    numit = iters
+  )
+
+  imps_fg_smc <- smcfcs(
+    originaldata = imp_dat,
+    smtype = "coxph",
+    smformula = "Surv(newtimes, D1) ~ X + Z",
+    method = methods_smcfcs,
+    m = m,
+    numit = iters
+  )
+
+  # Bring all the imputed datasets together
+  imps <- rbind.data.frame(
+    cbind(method = "CCA", imp_dat),
+    cbind(method = "cs_smc", imps_cs_smc$impDatasets[[1]]),
+    cbind(method = "cs_approx", complete(imps_cs_approx, action = 1L)),
+    cbind(method = "fg_smc", imps_fg_smc$impDatasets[[1]]),
+    cbind(method = "fg_approx", complete(imps_cs_approx, action = 1L))
+  )
+  return(imps)
+})
+```
+
+<!-- Note about assessing convergence -->
+
+5. Fit the Fine--Gray substantive model in each imputed dataset (using standard Cox software with $I(D = 1)$ and imputed $V$ as outcome variables), and pool the estimates using Rubin's rules.
+
+```{r}
+#| label: step_5
+
+# Bind everything together
+dat_imps <- rbindlist(list_imps, idcol = ".imp")
+dat_imps
+
+# To use the usual workflow: subset one of the methods first
+imps_fg_smc <- dat_imps[method == "fg_smc"]
+
+# Fit model in each imputed dataset
+mods_fg_smc <- lapply(
+  X = split(x = imps_fg_smc, f = imps_fg_smc$.imp), 
+  FUN = function(imp_dat) coxph(Surv(newtimes, D1) ~ X + Z, data = imp_dat)
+)
+
+# Pool results
+summary(pool(mods_fg_smc))
+
+# Otherwise: use (nested) data.table workflow to pool for all methods simultaneously
+dat_mods <- dat_imps[, .(
+  mod = list(coxph(Surv(newtimes, D1) ~ X + Z, data = .SD))
+), by = c("method", ".imp")]
+dat_mods
+
+dat_mods[, summary(pool(as.list(mod))), by = "method"]
+```
+
+\newpage
+
+# Applied data example
+
+```{r}
+#| echo: false
+#| results: false
+
+# Load in the good stuff
+tar_load(applied_dat, store = here::here("_targets"))
+tar_load(applied_dat_pooled, store = here::here("_targets"))
+dat <- applied_dat$dat
+sm_predictors <- applied_dat$sm_predictors
+
+#
+preds_final <- applied_dat_pooled$pooled_cumincs
+method_labs <- c(
+  "Compl. cases" = "CCA",
+  "SMC-FCS cause-spec" = "CS-SMC",
+  "MICE cause-spec" = "CS-Approx",
+  "SMC-FCS Fine-Gray" = "FG-SMC",
+  "MICE subdist" = "FG-Approx"
+)
+preds_final[, method := factor(
+  method, levels = names(method_labs), labels = method_labs
+)]
+
+# First make the cuminc figure
+p_cuminc <- preds_final |>
+  ggplot(aes(times, p_pooled, group = method)) +
+  #geom_ribbon(aes(ymin = CI_low, ymax = CI_upp, fill = method), alpha = 0.5) +
+  geom_step(aes(col = method, linetype = method), linewidth = 1) +
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
+  coord_cartesian(ylim = c(0, 0.225)) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    x = "Time since alloHCT (months)",
+    y = "(Pooled) Baseline cumulative incidence"
+  )
+
+p_ci_width <- preds_final |>
+  ggplot(aes(times, CI_width, group = method)) +
+  geom_step(aes(col = method, linetype = method), linewidth = 1) +
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
+  coord_cartesian(ylim = c(0, 0.225)) +
+  labs(
+    col = "Method",
+    linetype = "Method",
+    x = "Time since alloHCT (months)",
+    y = "(Pooled) 95% Confidence interval width"
+  )
+
+
+p_comb <- p_cuminc + p_ci_width & xlab(NULL) & theme(legend.position = "top")
+
+p_final <- wrap_elements(panel = p_comb + plot_layout(guides = "collect")) +
+  labs(tag = "Time since alloHCT (months)") +
+  theme(
+    plot.tag = element_text(size = rel(1)),
+    plot.tag.position = "bottom"
+  )
+
+ggplot2::ggsave(
+  plot = p_final,
+  filename = here::here("analysis/figures/applied_base_cuminc.pdf"),
+  width = 11,
+  scale = 1,
+  height = 7,
+  device = cairo_pdf
+)
+```
+
+## Data dictionary
+
+```{r}
+#| echo: false
+#| warning: false
+
+library(gtsummary)
+library(kableExtra)
+
+# Tbl summary
+df <- applied_dat$dat
+df_predz <- copy(df[, ..sm_predictors]) #|>
+# Re-transform for descriptives
+df_predz[, ':=' (
+  age_allo1_decades = (age_allo1_decades + 6) * 10,
+  year_allo1_decades = year_allo1_decades * 10 + 10 + 2009,
+  intdiagallo_decades = intdiagallo_decades * 10,
+  pb_allo1 = pb_allo1 * 5,
+  hb_allo1 = hb_allo1 * 5 + 10,
+  wbc_allo1 = exp(wbc_allo1 + log(15.1))
+)]
+
+# Edit some factor labels
+levels(df_predz$cmv_match)[1] <- "Patient negative/Donor negative"
+levels(df_predz$donrel_bin)[1] <- "HLA identical sibling"
+levels(df_predz$hctci_risk) <- c(
+  "Low risk ($0$)", "Intermediate risk ($1-2$)", "High risk ($\\geq 3$)"
+)
+levels(df_predz$KARNOFSK_threecat) <- c("$\\geq 90$", "$80$", "$\\leq 70$")
+levels(df_predz$ric_allo1) <- c("Standard", "Reduced")
+levels(df_predz$ruxo_preallo1) <- levels(df_predz$tceldepl_bin) <- c("No", "Yes")
+levels(df_predz$submps_allo1) <- c("Primary MF", "Secondary MF")
+
+# Edit some variable labels
+attr(df_predz$hctci_risk, "label") <- "HCT-CI risk category"
+attr(df_predz$KARNOFSK_threecat, "label") <- "Karnosfky performance score"
+attr(df_predz$tceldepl_bin, "label") <- "T-cell depletion (in- or ev-vivo)"
+attr(df_predz$ruxo_preallo1, "label") <- "Ruxolitinib given"
+attr(df_predz$age_allo1_decades, "label") <- "Patient age (years)"
+attr(df_predz$submps_allo1, "label") <- "Disease subclassification"
+attr(df_predz$cmv_match, "label") <- "Patient/donor CMV match"
+attr(df_predz$intdiagallo_decades, "label") <- "Interval diagnosis-transplantation (years)"
+attr(df_predz$year_allo1_decades, "label") <- "Year of transplantation"
+attr(df_predz$pb_allo1, "label") <- "Peripheral blood (PB) blasts (%)"
+attr(df_predz$wbc_allo1, "label") <- "White blood cell count (WBC, x$10^9$/L)"
+attr(df_predz$WEIGLOSS_allo1, "label") <- ">10% Weight loss prior to transplantation"
+
+data_dict_caption <- "Data dictionary. CMV: cytomegalovirus; HLA: human leukocyte antigen; HCT-CI: Hematopoietic stem cell transplantation-comorbidity index; MF: myelofibrosis."
+
+tbl_test <- tbl_summary(
+  df_predz,
+  missing_text = "(Missing)",
+  type = all_dichotomous() ~ "categorical"
+) |>
+  as_kable_extra(
+    format = "latex",
+    booktabs = TRUE,
+    longtable = TRUE,
+    caption = data_dict_caption,
+    linesep = "",
+    addtl_fmt = FALSE
+  )
+
+gsub(tbl_test, pattern = "%", replacement = "\\\\%")
+```
+
+## Non-parametric cumulative incidence curves
+
+```{r}
+#| fig-width: 9
+#| fig-height: 7
+#| dev: cairo_pdf
+#| echo: false
+#| fig-pos: 'H'
+#| fig-cap: "Stacked non-parametric cumulative incidence curves for competing relapse and non-relapse mortality, in dataset of 3982 primary and secondary myelofibrosis patients."
+#| fig-cap-location: top
+
+
+
+np_curves <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ 1, data = dat)
+
+par(family = "Roboto Condensed")
+plot(
+  np_curves,
+  cause = "stacked",
+  col = cols[c(4, 6)],
+  ylab = "Stacked cumulative incidence",
+  lty = c(1, 2),
+  xlab = "Time since alloHCT (months)",
+  percent = FALSE,
+  atrisk.at = seq(0, 60, by = 10),
+  atrisk.col = "black",
+  atrisk.title = "At risk:",
+  legend = FALSE
+)
+legend(
+  x = 0, y = 0.95,
+  legend = c("Relapse", "Non-relapse mortality"),
+  lty = c(1, 2),
+  col = cols[c(4, 6)],
+  bty = 'n',
+  lwd = c(3, 3)
+)
+```
+
+## Pooled regression coefficeints
+
+```{r}
+#| echo: false
+
+pooled_mods <- applied_dat_pooled$pooled_coefs
+pooled_mods[, summ := paste0(
+  round(estimate, 2), " [", round(conf.low, 2), ", ", round(conf.high, 2), "]"
+)]
+pooled_mods[, method := factor(method, levels = names(method_labs), labels = method_labs)]
+
+df_tbl <- dcast(pooled_mods, term + method ~ mod_type, value.var = "summ")
+df_tbl[, term := factor(
+  term,
+  levels = c(
+    "ric_allo1reduced",
+    "cmv_matchOther",
+    "vchromos_preallo1Abnormal",
+    "donrel_binOther",
+    "hb_allo1",
+    "hctci_riskintermediate risk (1-2)",
+    "hctci_riskhigh risk (>= 3)",
+    "intdiagallo_decades",
+    "KARNOFSK_threecat80",
+    "KARNOFSK_threecat<80",
+    "submps_allo1sMF",
+    "sweat_allo1Yes",
+    "age_allo1_decades",
+    "PATSEXMale",
+    "pb_allo1",
+    "ruxo_preallo1yes",
+    "tceldepl_binyes",
+    "wbc_allo1",
+    "WEIGLOSS_allo1Yes",
+    "year_allo1_decades"
+  ),
+  labels = c(
+    "Conditioning: reduced",
+    "CMV match: other",
+    "Cytogenetics: abnormal",
+    "Donor relation: other",
+    "Hemoglobin (per $5$ g/dL)",
+    "HCT-CI ($1-2$)",
+    "HCT-CI ($\\geq 3$)",
+    "Interval diagnosis to alloHCT (decades)",
+    "Karnofsky ($80$)",
+    "Karnofsky ($\\leq 70$)",
+    "Disease subclassification: secondary MF",
+    "Night sweats: yes",
+    "Patient age (decades)",
+    "Patient sex: male",
+    "PB Blasts (per $5$\\%)",
+    "Ruxolitinib given: yes",
+    "T-cell depletion: yes",
+    "WBC count (log)",
+    "Weight loss: yes",
+    "Year of alloHCT (decades)"
+  )
+)]
+
+tb_breaks <- rep(5, length(levels(df_tbl$term)))
+names(tb_breaks) <- levels(df_tbl$term)
+
+pooled_coefs_caption <- "Pooled log hazard ratios [log HR, 95\\% confidence interval] for Fine--Gray model for relapse, cause-specific Cox model relapse, and cause-specific Cox model for non-relapse mortality (NRM)."
+
+df_tbl[order(term)][, !c("term")] |>
+  kbl(
+    format = "latex",
+    longtable = TRUE,
+    booktabs = TRUE,
+    caption = pooled_coefs_caption,
+    align = c("l", "r", "r", "r"),
+    col.names = c(
+      "Term + method",
+      "Relapse subdist.~log HR",
+      "Relapse cause-spec.~log HR",
+      "NRM cause-spec.~log HR"
+    ),
+    escape = FALSE
+  ) |>
+  # Important that pack_rows() before the styling
+  pack_rows(index = tb_breaks, escape = FALSE) |> 
+  kable_styling(
+    latex_options = c("repeat_header"),
+    repeat_header_continued = TRUE,
+    repeat_header_method = "replace",
+    font_size = 9
+  )
+```

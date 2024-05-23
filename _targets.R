@@ -234,7 +234,8 @@ applied_example <- list(
     reps = ceiling(applied_imp_settings$num_imputations / applied_imp_settings$num_batches),
     batches = applied_imp_settings$num_batches, # for parallelizing
     format = "fst"
-  )
+  ),
+  tar_target(applied_dat_pooled, pool_applied_dat(applied_impdats, applied_dat))
 )
 
 

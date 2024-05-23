@@ -198,3 +198,92 @@ one_imputation_applied_dat <- function(dat_processed,
 
   return(data.table(impdats))
 }
+
+
+pool_applied_dat <- function(impdats,
+                             applied_dat) {
+
+  options(contrasts = rep("contr.treatment", 2))
+
+  # Model formulas
+  sm_predictors <- applied_dat$sm_predictors
+  sm_form_fg <- reformulate(
+    termlabels = sm_predictors,
+    response = "Surv(newtimes, newevent)"
+  )
+  sm_form_cs1 <- update(sm_form_fg, Surv(time_ci_adm, status_ci_adm == 1) ~ .)
+  sm_form_cs2 <- update(sm_form_fg, Surv(time_ci_adm, status_ci_adm == 2) ~ .)
+
+  # Fit the models in each imputed dataset
+  setDT(impdats)
+  mods_imp_dats <- impdats[, .(
+    mods_fg = list(coxph(sm_form_fg, data = .SD, x = TRUE)),
+    mods_cs1 = list(coxph(sm_form_cs1, data = .SD, x = TRUE)),
+    mods_cs2 = list(coxph(sm_form_cs2, data = .SD, x = TRUE))
+  ), by = c("tar_batch", "tar_rep", "method")] |>
+    melt(
+      measure.vars = c("mods_fg", "mods_cs1", "mods_cs2"),
+      variable.name = "mod_type",
+      value.name = "mod"
+    )
+
+  # Make baseline patient
+  times_preds <- seq(0.01, 60, by = 0.1)
+  newpat <- applied_dat$dat[1, ]
+  newpat[, (sm_predictors) := lapply(.SD, function(col) {
+    if (is.factor(col)) levels(col)[1] else 0
+  }), .SDcols = sm_predictors]
+
+  # Compute baseline cumincs + SEs
+  basecuminc_imp_dats <- mods_imp_dats[mod_type == "mods_fg", .(
+    "base" = list({
+      obj <- predictCox(
+        object = mod[[1]],
+        times = times_preds,
+        type = "survival",
+        newdata = newpat,
+        se = TRUE,
+        store.iid = "minimal"
+      )
+      cbind.data.frame(
+        "times" = times_preds,
+        "cuminc" = 1 - drop(obj$survival),
+        "se" = drop(obj$survival.se)
+      )
+    })
+  ), by = c("tar_batch", "tar_rep", "method")]
+
+  preds_full <- basecuminc_imp_dats[, unlist(
+    base, recursive = FALSE
+  ), by = c("tar_batch", "tar_rep", "method")]
+
+  preds_full[, ':=' (p  = cuminc, p_trans = cloglog(cuminc), var_p = (se)^2)]
+  preds_full[, Ui := var_p / (log(1 - p) * (1 - p))^2]
+  by_vars <- c("method", "times")
+
+  preds_summ <- preds_full[, .(
+    m = .N,
+    Ubar = mean(Ui),
+    B = stats::var(p_trans),
+    Qbar = mean(p_trans)
+  ), by = by_vars]
+
+  preds_summ[, total_var := Ubar + (1 + m^-1) * B, by = by_vars]
+
+  # Normally you should use t-dist and degrees of freedom based on B and T,
+  # but given the number of imputations here: df will be very large, so standard
+  # normal approximation works fine
+  preds_final <- preds_summ[, .(
+    p_pooled = inv_cloglog(Qbar),
+    CI_low = inv_cloglog(Qbar - stats::qnorm(0.975) * sqrt(total_var)),
+    CI_upp = inv_cloglog(Qbar + stats::qnorm(0.975) * sqrt(total_var))
+  ), by = by_vars]
+  preds_final[p_pooled == 0, c("CI_low", "CI_upp") := 0]
+  preds_final[, CI_width := CI_upp - CI_low]
+
+  pooled_mods <- mods_imp_dats[, .(
+    summ = list(tidy(pool(mod), conf.int = TRUE))
+  ), by = c("method", "mod_type")][, unlist(summ, recursive = FALSE), by = c("method", "mod_type")]
+
+  return(list("pooled_coefs" = pooled_mods, "pooled_cumincs" = preds_final))
+}

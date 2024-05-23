@@ -1,8 +1,11 @@
 ---
 title: "Simulation study"
-format:
-  html: 
-    embed-resources: true
+#format:
+#  html: 
+#    embed-resources: true
+#    toc: true
+format: 
+  gfm:
     toc: true
 execute:
   echo: false
@@ -18,6 +21,7 @@ editor_options:
 
 # use gfm format eventually?
 source(here::here("packages.R"))
+library(Cairo)
 invisible(lapply(list.files(here::here("R"), full.names = TRUE), source))
 cols <- c("#CABEE9", "#7C7189", "#FAE093", "#D04E59", "#BC8E7D", "#2F3D70")
 set.seed(895989)
@@ -40,24 +44,24 @@ all_labels <- labeller(
     "none" = "No censoring"
   ),
   failure_time_model = c(
-    "correct_FG" = "Well specified FG", 
+    "correct_FG" = "Correctly specified FG", 
     "misspec_FG" = "Misspecified FG"
   )
 )
 
 # Read targets objects
-tar_load(coefs_main)
-tar_load(true_cuminc_all)
-tar_load(pooled_preds_main)
+tar_load(coefs_main, store = here::here("_targets"))
+tar_load(true_cuminc_all, store = here::here("_targets"))
+tar_load(pooled_preds_main, store = here::here("_targets"))
 
 # Add decent labels for the methods
 method_labs <- c(
-  "full" = "Full data",
-  "CCA" = "Compl. cases",
-  "mice_comp" = "MI cause-spec",
-  "mice_subdist" = "MI subdist",
-  "smcfcs_comp" = "SMC-FCS cause-spec",
-  "smcfcs_finegray" = "SMC-FCS Fine-Gray"
+  "full" = "Full",
+  "CCA" = "CCA",
+  "smcfcs_comp" = "CS-SMC",
+  "mice_comp" = "CS-Approx",
+  "smcfcs_finegray" = "FG-SMC",
+  "mice_subdist" = "FG-Approx"
 )
 coefs_main[, ':=' (
   method = factor(method, levels = names(method_labs), labels = method_labs),
@@ -94,7 +98,10 @@ dat_true <- mapply(
       "misspec_FG" = paste0("params_weibull_lfps_", p),
       "correct_FG" = paste0("true_params_correct_FG_", p)
     )
-    params <- do.call(targets::tar_read, list(as.symbol(params_slug))) 
+    params <- do.call(
+      targets::tar_read, 
+      list(name = as.symbol(params_slug), store = here::here("_targets"))
+    ) 
     compute_true(
       t = times,
       newdat = newdat,
@@ -220,7 +227,7 @@ p1 / p2 / p3
 
 ggsave(
   plot = p1 / p2 / p3,
-  "analysis/figures/scenarios_vis.pdf", 
+  here::here("analysis/figures/scenarios_vis.pdf"), 
   dpi = 300,
   width = 13,
   height = 9,
@@ -241,7 +248,7 @@ sim_summ <- rsimsum::multisimsum(
   se = "std.error",
   true = "true",
   methodvar = "method",
-  ref = "Full data",
+  ref = "Full",
   ci.limits = c("conf.low", "conf.high"),
   x = TRUE,
   by = c("censoring_type", "failure_time_model", "prob_space")
@@ -281,7 +288,7 @@ for (i in seq_along(covars)) {
   cat("\n")
   cat("#### ", covars[i], "\n")
   
-  p <- coefs_main[term == covars[i] & method != "Full data"] |>
+  p <- coefs_main[term == covars[i] & method != "Full"] |>
     ggplot(aes(method, relbias)) +
     geom_jitter(
       aes(col = method, alpha = dens),
@@ -314,22 +321,11 @@ for (i in seq_along(covars)) {
       fun.min = function(x) mean(x) - crit * (sd(x) / sqrt(length(x))),
       fun.max = function(x) mean(x) + crit * (sd(x) / sqrt(length(x))),
       geom = "crossbar",
-      #lineend = "round",
       alpha = 0.5,
-      #col = NULL,
       fill = "black",
       fatten = 1,
       linewidth = 0.25
     ) +
-    # stat_summary(
-    #   fun = mean,
-    #   geom = "crossbar",
-    #   fatten = 1.5,
-    #   #linewidth = 0.5,
-    #   col = "black",
-    #   alpha = 0.75,
-    #   lineend = "round"
-    # ) +
     scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
     labs(x = "Method", y = "100 * (Estimate - True) / True (%)")
   
@@ -338,7 +334,7 @@ for (i in seq_along(covars)) {
   if (covars[i] == "X") {
     ggsave(
       plot = p,
-      filename = "analysis/figures/bias_X.pdf",
+      filename = here::here("analysis/figures/bias_X.pdf"),
       width = 7,
       scale = 1.25,
       height = 10,
@@ -362,7 +358,7 @@ for (i in seq_along(covars)) {
 #| fig-width: 7
 #| output: asis
 
-df_summ_var <- df_summ[stat %in% c("modelse", "empse", "cover") & method != "Full data"]
+df_summ_var <- df_summ[stat %in% c("modelse", "empse", "cover") & method != "Full"]
 df_summ_var[, stat := factor(
   stat, 
   levels = c("empse", "modelse", "cover"),
@@ -442,7 +438,7 @@ for (i in seq_along(covars)) {
   if (covars[i] == "X") {
     ggsave(
       plot = p,
-      filename = "analysis/figures/perf_X.pdf",
+      filename = here::here("analysis/figures/perf_X.pdf"),
       width = 7,
       scale = 1.25,
       height = 10,
@@ -456,7 +452,7 @@ for (i in seq_along(covars)) {
 
 :::
 
-## Predicted cumulative incidence
+## Cumulative incidences
 
 ```{r}
 #| label: sim-summ-preds
@@ -469,7 +465,7 @@ sim_summ_preds <- rsimsum::simsum(
   se = NULL,
   true = "cuminc",
   methodvar = "method",
-  ref = "Full data",
+  ref = "Full",
   by = c("time", "censoring_type", "failure_time_model", "prob_space", "X", "Z")
 )
 
@@ -557,7 +553,7 @@ for (i in seq_along(pats)) {
       linetype = "Method",
       shape = "Method",
       x = "Time",
-      y = "Difference predicted - true cumulative incidence cause 1"
+      y = "Difference estimated - true cumulative incidence cause 1"
     )
   
   p_rmse <- df_summ_pred[stat == "mse" & eval(expr_pat)] |>
@@ -586,7 +582,7 @@ for (i in seq_along(pats)) {
   
   ggsave(
     plot = p,
-    filename = paste0("analysis/figures/preds_", pats[i], ".pdf"),
+    filename = here::here(paste0("analysis/figures/preds_", pats[i], ".pdf")),
     width = 7,
     scale = 1.5,
     height = 10,
@@ -610,7 +606,7 @@ dat_missmech <- generate_dataset(
   n = 2000,
   args_event_times = list(
     mechanism = "correct_FG",
-    params = tar_read(true_params_correct_FG_0.15),
+    params = tar_read(true_params_correct_FG_0.15, store = here::here("_targets")),
     censoring_type = "none"
   ),
   args_missingness = list(
@@ -642,7 +638,7 @@ p_logis / p_jitt
 #| fig-height: 7
 
 set.seed(7865185) # for slightly nicer looking replication
-params <- tar_read(true_params_correct_FG_0.65)
+params <- tar_read(true_params_correct_FG_0.65, store = here::here("_targets"))
 
 dat <- generate_dataset(
   n = 2e3,
@@ -815,7 +811,7 @@ p_ids / p_subdists
 
 # This bastard is the heavy one!
 ggsave(
-  filename = "analysis/figures/cens_appendix.pdf", 
+  filename = here::here("analysis/figures/cens_appendix.pdf"), 
   width = 9,
   height = 10,
   device = cairo_pdf
