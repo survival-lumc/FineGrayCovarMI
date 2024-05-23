@@ -72,6 +72,4 @@ style="width:100.0%" />
 
 ### Censoring plots
 
-<img
-src="simulation_results_files/figure-commonmark/unnamed-chunk-9-1.png"
-style="width:100.0%" />
+![](simulation_results_files/figure-commonmark/unnamed-chunk-9-1.png)

@@ -1,12 +1,10 @@
 ---
 title: "Simulation study"
-#format:
-#  html: 
-#    embed-resources: true
-#    toc: true
 format: 
   gfm:
     toc: true
+    fig-format: png
+    fig-dpi: 300
 execute:
   echo: false
   warning: false
@@ -277,8 +275,8 @@ df_summ <- data.table(sim_summ$summ)
 
 ```{r}
 #| label: rel-bias-plots
-#| fig-height: 10
-#| fig-width: 7
+#| fig-height: 12
+#| fig-width: 9
 #| output: asis
 
 covars <- c("X", "Z")
@@ -354,8 +352,8 @@ for (i in seq_along(covars)) {
 
 ```{r}
 #| label: std-error-plots
-#| fig-height: 10
-#| fig-width: 7
+#| fig-height: 12
+#| fig-width: 9
 #| output: asis
 
 df_summ_var <- df_summ[stat %in% c("modelse", "empse", "cover") & method != "Full"]
@@ -479,8 +477,8 @@ df_summ_pred[, time := as.numeric(as.character(time))]
 
 ```{r}
 #| label: pred-plots
-#| fig-height: 10
-#| fig-width: 7
+#| fig-height: 15
+#| fig-width: 10
 #| output: asis
 
 pats <- c("Baseline", "Higher risk")
@@ -634,8 +632,8 @@ p_logis / p_jitt
 ### Censoring plots
 
 ```{r}
-#| out-width: "100%"
-#| fig-height: 7
+#| fig-height: 12
+#| fig-width: 9
 
 set.seed(7865185) # for slightly nicer looking replication
 params <- tar_read(true_params_correct_FG_0.65, store = here::here("_targets"))
