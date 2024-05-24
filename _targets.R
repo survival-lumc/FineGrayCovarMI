@@ -242,6 +242,7 @@ applied_example <- list(
 # Here we bring together all the simulation scenarios
 list(
   applied_example,
-  summarized_sims#,
-  #tar_quarto(simulation_results, path = "analysis/simulation_results.qmd")
+  summarized_sims,
+  tar_quarto(simulation_results, path = "analysis/simulation-results.qmd"),
+  tar_quarto(supplement, path = "analysis/supplementary-material.qmd")
 )
