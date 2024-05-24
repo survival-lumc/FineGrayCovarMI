@@ -1,4 +1,4 @@
-# Later extent properly with the (...),for now keep it simple
+# Later extend properly with the (...),for now keep it simple
 pool_nested_predictions <- function(preds_main,
                                     new_pat, # should be numeric!
                                     ...) {
@@ -28,7 +28,8 @@ pool_nested_predictions <- function(preds_main,
 }
 
 
-# Ok do a jackknife ting?
+# Or do a jackknife ting?
+# (function below is from simhelpers package)
 rmse_mcse <- function(estimates, true, K) {
 
   # Keep first true value

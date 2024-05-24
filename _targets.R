@@ -9,6 +9,7 @@ library("here")
 source(here("packages.R"))
 invisible(lapply(list.files(here("R"), full.names = TRUE), source))
 
+# Skips targets based on applied dataset, which is available to share
 tar_option_set(error = "continue")
 
 # (!) Make this into targets markdown?
@@ -16,7 +17,7 @@ tar_option_set(error = "continue")
 # To run pipeline in parallel
 plan(callr)
 
-# Data-generating parameters depend on p-space domination, so we need to iterate
+# Data-generating parameters depend on p, so we need to iterate
 # over that parameter separately
 prob_space_domin <- c("low_p" = 0.15, "high_p" = 0.65)
 failure_time_model <- c("correct_FG", "misspec_FG")
@@ -120,8 +121,8 @@ simulation_pipeline_main <- tar_map(
       args_imputations = list(
         m = num_imputations,
         iters = num_cycles,
-        rjlimit = 1000,
-        rhs_kmi = "1"
+        rjlimit = 1000, # not actually needed since X is binary
+        rhs_kmi = "1" # marginal Kaplan-Meier for the censoring
       ),
       args_predictions = list(timepoints = pred_timepoints),
       true_betas = switch(
@@ -239,7 +240,7 @@ applied_example <- list(
 )
 
 
-# Here we bring together all the simulation scenarios
+# Here we bring everything together
 list(
   applied_example,
   summarized_sims,

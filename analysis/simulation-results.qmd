@@ -17,7 +17,7 @@ editor_options:
 #| label: setup
 #| warning: false 
 
-# use gfm format eventually?
+
 source(here::here("packages.R"))
 library(Cairo)
 invisible(lapply(list.files(here::here("R"), full.names = TRUE), source))
