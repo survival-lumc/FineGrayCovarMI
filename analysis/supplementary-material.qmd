@@ -222,6 +222,7 @@ methods_smcfcs
 #| results: false
 
 # Impute X
+# (parallelize this loop for speed improvements on larger data)
 list_imps <- lapply(list_to_impute, function(imp_dat) {
 
   m <- 1
