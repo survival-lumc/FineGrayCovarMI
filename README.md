@@ -27,3 +27,12 @@ which produces:
 - [supplementary-material.qmd](./analysis/supplementary-material.qmd), the supplementary materials pdf submitted together with the manuscript.
 
 Furthermore, the project uses [`{renv}`](https://rstudio.github.io/renv/articles/renv.html) to track its R package dependencies.
+
+## Additional points
+
+To use this methodology, you can either:
+
+- Work with the [minimal code](https://github.com/survival-lumc/FineGrayCovarMI/blob/bc79b8a6496b22343da67996b2c3317f0d900b79/analysis/supplementary-material.qmd#L136) provided with the manuscript.
+- Use a wrapper function, which will be available in the `{smcfcs}` R package - see [here](https://github.com/edbonneville/smcfcs/blob/finegray/R/smcfcs.finegray.R).
+
+- 
