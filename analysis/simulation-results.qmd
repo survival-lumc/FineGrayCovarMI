@@ -11,6 +11,9 @@ execute:
   out-width: "100%"
 editor_options: 
   chunk_output_type: console
+knitr:
+  opts_chunk:
+    fig.path: "figures/"
 ---
 
 ```{r}
@@ -598,6 +601,7 @@ for (i in seq_along(pats)) {
 ### Covariates and missing data mechanism
 
 ```{r}
+#| label: miss-mech-plot
 #| out-width: "100%"
 #| fig-height: 7
 dat_missmech <- generate_dataset(
@@ -632,6 +636,7 @@ p_logis / p_jitt
 ### Censoring plots
 
 ```{r}
+#| label: cens-imps-plot
 #| fig-height: 12
 #| fig-width: 9
 

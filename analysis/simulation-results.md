@@ -14,7 +14,7 @@
 
 ## Scenarios set-up
 
-![](simulation-results_files/figure-commonmark/scenarios-vis-1.png)
+![](figures/scenarios-vis-1.png)
 
 ## Log subdistribution hazard ratios
 
@@ -24,11 +24,11 @@
 
 #### X
 
-![](simulation-results_files/figure-commonmark/rel-bias-plots-1.png)
+![](figures/rel-bias-plots-1.png)
 
 #### Z
 
-![](simulation-results_files/figure-commonmark/rel-bias-plots-2.png)
+![](figures/rel-bias-plots-2.png)
 
 </div>
 
@@ -38,11 +38,11 @@
 
 #### X
 
-![](simulation-results_files/figure-commonmark/std-error-plots-1.png)
+![](figures/std-error-plots-1.png)
 
 #### Z
 
-![](simulation-results_files/figure-commonmark/std-error-plots-2.png)
+![](figures/std-error-plots-2.png)
 
 </div>
 
@@ -54,11 +54,11 @@
 
 #### Baseline
 
-![](simulation-results_files/figure-commonmark/pred-plots-1.png)
+![](figures/pred-plots-1.png)
 
 #### Higher risk
 
-![](simulation-results_files/figure-commonmark/pred-plots-2.png)
+![](figures/pred-plots-2.png)
 
 </div>
 
@@ -66,10 +66,8 @@
 
 ### Covariates and missing data mechanism
 
-<img
-src="simulation-results_files/figure-commonmark/unnamed-chunk-8-1.png"
-style="width:100.0%" />
+<img src="figures/miss-mech-plot-1.png" style="width:100.0%" />
 
 ### Censoring plots
 
-![](simulation-results_files/figure-commonmark/unnamed-chunk-9-1.png)
+![](figures/cens-imps-plot-1.png)

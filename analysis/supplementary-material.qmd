@@ -38,6 +38,9 @@ format:
   pdf:
     documentclass: article
     number-sections: true
+    #mainfont: "NewCenturySchlbk-Roman"
+    fontsize: 12pt
+    keep-tex: true
     code-block-border-left: false
     papersize: a4
     geometry:
@@ -46,6 +49,9 @@ format:
       - title.tex
     include-in-header:
       text: |
+        %\usepackage[T1]{fontenc}
+        %\usepackage[utf8]{inputenc}
+        %\usepackage{times}
         \usepackage[noblocks]{authblk}
         \renewcommand*{\Authsep}{, }
         \renewcommand*{\Authand}{, }
@@ -60,6 +66,9 @@ execute:
   echo: true
 editor_options: 
   chunk_output_type: console
+knitr:
+  opts_chunk:
+    fig.path: "figures/"
 ---
 
 
@@ -155,8 +164,8 @@ nrow(dat)
 # Add cause-specific event indicators + cumulative hazards
 dat$D1 <- as.numeric(dat$D == 1)
 dat$D2 <- as.numeric(dat$D == 2)
-dat$H1 <- mice::nelsonaalen(data = dat, timevar = "time", statusvar = "D1")
-dat$H2 <- mice::nelsonaalen(data = dat, timevar = "time", statusvar = "D2")
+dat$H1 <- nelsonaalen(data = dat, timevar = "time", statusvar = "D1")
+dat$H2 <- nelsonaalen(data = dat, timevar = "time", statusvar = "D2")
 ```
 
 2. Multiply impute the potential censoring for those failing from cause 2 using \{kmi\}, yielding $m$ censoring complete datasets (i.e. with "complete" $V$). Any completely observed covariates that are known to affect the probability of being censored should be included as predictors in the model for the censoring process. \{kmi\} imputes based on stratified Kaplan--Meier when $Z$ are categorical, and based on a Cox model when at least one of $Z$ are continuous.
@@ -164,27 +173,31 @@ dat$H2 <- mice::nelsonaalen(data = dat, timevar = "time", statusvar = "D2")
 <!-- Mention administrative censoring here -->
 
 ```{r}
+# 5 imputed datasets
+M <- 5
+
 # Multiply impute the censoring times
 cens_imps <- kmi(
   formula = Surv(time, D != 0) ~ 1, # Additional predictors added here
   data = dat,
   etype = D,
   failcode = 1, # Specify event of interest
-  nimp = 5
+  nimp = M
 )
 ```
 
 3. In each censoring complete dataset, add an additional column $\hat{\Lambda}_1(V)$. This takes the value of the marginal cumulative subdistribution hazard for cause 1 at an individual's observed or imputed subdistribution time, obtained with the Nelson--Aalen estimator based on $I(D = 1)$ and imputed $V$.
 
 ```{r}
-# Preparation for covariate imputation:
+# Preparation for covariate imputation: 
+# Create list of censoring complete datasets (with imputed V)
 list_to_impute <- lapply(cens_imps$imputed.data, function(imp_dat) {
   
-  # Adjust to new ordering from kmi (cause 2 individuals appended at bottom)
+  # Adjust new ordering from kmi (cause 2 individuals appended at bottom)
   dat_to_impute <- cbind(cens_imps$original.data, imp_dat)
   
   # Compute/add Lambda_1(V) in each imputed dataset
-  dat_to_impute$Lambda1 <- mice::nelsonaalen(
+  dat_to_impute$Lambda1 <- nelsonaalen(
     data = dat_to_impute, 
     timevar = "newtimes", # kmi naming for V
     statusvar = "D1" # I(D=1)
@@ -199,19 +212,24 @@ head(list_to_impute[[1]])
 4. In each censoring complete dataset (each with different $V$ and $\hat{\Lambda}_1(V)$, but same $\hat{H}_1(T)$ and $\hat{H}_2(T)$), create a single imputed dataset using the desired covariate imputation method(s).
 
 ```{r}
-# Prepare predictor matrices for MICE using the first censoring complete dataset
-predmat_cs_approx <- predmat_fg_approx <- mice::make.predictorMatrix(list_to_impute[[1]])
+# Prepare predictor matrices for MICE using first censoring complete dataset
+predmat_cs_approx <- predmat_fg_approx <- mice::make.predictorMatrix(
+  data = list_to_impute[[1]]
+)
 predmat_cs_approx[] <- predmat_fg_approx[] <- 0
+
+# Explicitly specify predictors to include in the imputation model
 predmat_cs_approx["X", c("Z", "D1", "D2", "H1", "H2")] <- 1
 predmat_fg_approx["X", c("Z", "D1", "Lambda1")] <- 1
 predmat_fg_approx
 
 # Prepare the methods:
 # - Approx methods: model type for X | Z, outcome
-methods_approx <- mice::make.method(list_to_impute[[1]])
+methods_approx <- mice::make.method(data = list_to_impute[[1]])
+
 # - SMC methods: proposal model for X | Z (need to use {smcfcs} naming)
 methods_smcfcs <- mice::make.method(
-  list_to_impute[[1]],
+  data = list_to_impute[[1]],
   defaultMethod = c("norm", "logreg", "mlogit", "podds")
 )
 methods_smcfcs
@@ -221,8 +239,8 @@ methods_smcfcs
 #| label: step_4
 #| results: false
 
-# Impute X
-# (parallelize this loop for speed improvements on larger data)
+# Impute X in each censoring complete dataset
+# (parallelise this loop for speed improvements on larger data)
 list_imps <- lapply(list_to_impute, function(imp_dat) {
 
   m <- 1
@@ -289,18 +307,22 @@ dat_imps <- rbindlist(list_imps, idcol = ".imp")
 dat_imps
 
 # To use the usual workflow: subset one of the methods first
-imps_fg_smc <- dat_imps[method == "fg_smc"]
+imps_fg_smc <- dat_imps[dat_imps$method == "fg_smc", ]
 
 # Fit model in each imputed dataset
 mods_fg_smc <- lapply(
-  X = split(x = imps_fg_smc, f = imps_fg_smc$.imp), 
-  FUN = function(imp_dat) coxph(Surv(newtimes, D1) ~ X + Z, data = imp_dat)
+  X = seq_len(M), 
+  FUN = function(m) {
+    imp_m <- imps_fg_smc[imps_fg_smc$.imp == m, ]
+    coxph(Surv(newtimes, D1) ~ X + Z, data = imp_m)
+  } 
 )
 
 # Pool results
 summary(pool(mods_fg_smc))
 
-# Otherwise: use (nested) data.table workflow to pool for all methods simultaneously
+# Alternative: 
+# Use (nested) {data.table} workflow to pool all methods simultaneously!
 dat_mods <- dat_imps[, .(
   mod = list(coxph(Surv(newtimes, D1) ~ X + Z, data = .SD))
 ), by = c("method", ".imp")]
@@ -451,6 +473,7 @@ gsub(tbl_test, pattern = "%", replacement = "\\\\%")
 ## Non-parametric cumulative incidence curves
 
 ```{r}
+#| label: MF-cuminc-plot
 #| fig-width: 9
 #| fig-height: 7
 #| dev: cairo_pdf
