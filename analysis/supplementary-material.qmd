@@ -1,21 +1,21 @@
 ---
 title: "Supplement to: Multiple imputation of missing covariates when using the Fine--Gray model"
 author: 
-  - name: E. F. Bonneville
+  - name: Edouard F. Bonneville
     affil-id: 1
-  - name: J. Beyersmann
+  - name: Jan Beyersmann
     affil-id: 2
-  - name: R. H. Keogh
+  - name: Ruth H. Keogh
     affil-id: 3
-  - name: J. W. Bartlett
+  - name: Jonathan W. Bartlett
     affil-id: 3
-  - name: T. P. Morris
+  - name: Tim P. Morris
     affil-id: 4
-  - name: N. Polverelli
+  - name: Nicola Polverelli
     affil-id: 5
-  - name: L. C. de Wreede
+  - name: Liesbeth C. de Wreede
     affil-id: 1,6,*
-  - name: and H. Putter
+  - name: and Hein Putter
     affil-id: 1,7,*
 affiliations:
   - id: 1

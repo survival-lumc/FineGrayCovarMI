@@ -1,5 +1,7 @@
 # Multiple imputation of missing covariates when using the Fine&ndash;Gray model
 
+[![arXiv](https://img.shields.io/badge/arXiv-2405.16602-f9f107.svg)](https://arxiv.org/abs/2405.16602)
+
 **Authors**: Edouard F. Bonneville, Jan Beyersmann, Ruth H. Keogh, Jonathan W. Bartlett, Tim P. Morris, Nicola Polverelli, Liesbeth C. de Wreede, and Hein Putter
 
 ## Abstract
