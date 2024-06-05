@@ -35,4 +35,4 @@ Furthermore, the project uses [`{renv}`](https://rstudio.github.io/renv/articles
 To use this methodology, you can either:
 
 - Work with the [minimal code](https://github.com/survival-lumc/FineGrayCovarMI/blob/bc79b8a6496b22343da67996b2c3317f0d900b79/analysis/supplementary-material.qmd#L136) provided with the manuscript.
-- Use a wrapper function, which will be available in the `{smcfcs}` R package - see [here](https://github.com/edbonneville/smcfcs/blob/finegray/R/smcfcs.finegray.R).
+- Use a wrapper function, which will be available in the `{smcfcs}` R package - see [here](https://github.com/jwb133/smcfcs/blob/master/R/smcfcs.finegray.R).
