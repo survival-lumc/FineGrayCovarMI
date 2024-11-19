@@ -5,26 +5,32 @@ library(data.table)
 library(survival)
 library(mice)
 library(targets)
+library(future)
 
 source("R/data-generation.R")
 source("R/kmi-timefixed.R")
 
 set.seed(4894688)
 params <- tar_read(true_params_correct_FG_0.15)
+params$cause1$betas <- c(1, 1)
 dat <- generate_dataset(
   n = 2500,
   args_event_times = list(
     mechanism = "correct_FG",
     params = params,
     censoring_type = "exponential",
-    censoring_params = list("exponential" = "0.1 * exp(1 * (as.numeric(X) - 1))")
+    censoring_params = list(
+      "exponential" = "0.45 * exp(1 * (as.numeric(X) - 1) + Z)"
+    )
+   # censoring_params = list("exponential" = "0.49")
   ),
   args_missingness = list(
     mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "1.5 * Z")
   )
 )
-table(dat$D)
+prop.table(table(dat$D))
 plot(survfit(Surv(time, D == 0) ~ X, data = dat))
+plot(survfit(Surv(time, D == 0) ~ is.na(X), data = dat))
 
 # Now we add empty vars
 dat[, ':=' (
@@ -33,20 +39,12 @@ dat[, ':=' (
   newevent = as.numeric(D == 1)
 )]
 
-# Predmats
-predmat <- make.predictorMatrix(dat)
-predmat[] <- 0
-predmat["newtimes", c("time", "D")] <- 1
-predmat["H_subdist_cause1", c("newtimes", "D")] <- 1
-predmat["X", c("Z", "newevent", "H_subdist_cause1")] <- 1
-predmat
-
-impute_cens_times <- function(time, D, X) {
+impute_cens_times <- function(time, D, X, Z) {
 
   id_temp <- seq_along(time) # probs can remove
   kmi_single <- kmi(
-    Surv(time, D != 0) ~ X,
-    data = data.frame(time, D, X),
+    Surv(time, D != 0) ~ X + Z,
+    data = data.frame(time, D, X, Z),
     etype = D,
     failcode = 1,
     nimp = 1
@@ -90,24 +88,39 @@ nelsaalen <- function(timevar,
 }
 
 
+# Add NelsAalen censoring
+dat[, "ind_cens" := as.numeric(D == 0)]
+dat[, "H_cens" := nelsaalen(time, ind_cens)]
+
+# Predmats
+predmat <- make.predictorMatrix(dat)
+predmat[] <- 0
+predmat["newtimes", c("time", "D")] <- 1
+predmat["H_subdist_cause1", c("newtimes", "D")] <- 1
+predmat["X", c("Z", "newevent", "H_subdist_cause1", "H_cens")] <- 1
+predmat
+
+
 meths <- make.method(dat)
 meths["newtimes"] <- paste(
-  "~I(", expression(impute_cens_times(time, D, X)),")"
+  "~I(", expression(impute_cens_times(time, D, X, Z)),")"
 )
 meths["H_subdist_cause1"] <- paste(
   "~I(", expression(nelsaalen(newtimes, as.numeric(D == 1))),")"
 )
+meths["X"] <- "cart"
 
-visits <- c("newtimes", "H_subdist_cause1", "X")
+#visits <- c("newtimes", "H_subdist_cause1", "X")
 
 imps <- mice(
   data = data.frame(dat),
   method = meths,
-  m = 10,
+  m = 5,
   maxit = 10,
   predictorMatrix = predmat,
   visitSequence = c("newtimes", "H_subdist_cause1", "X")
 )
+
 plot(imps)
 
 lapply(complete(imps, "all"), function(x) {

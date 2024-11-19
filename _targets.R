@@ -64,7 +64,8 @@ simulation_pipeline_main <- tar_map(
       )
     )
   ),
-  # Generate large dataset + estimate least-false Weibull parameters, for use in the misspecified FG scenario
+  # Generate large dataset + estimate least-false Weibull parameters,
+  # .. for use in the misspecified FG scenario
   tar_target(
     params_weibull_lfps,
     recover_weibull_lfps(
@@ -99,7 +100,8 @@ simulation_pipeline_main <- tar_map(
     pattern = map(censoring_type_dyn)
   ),
 
-  # These are the actual core simulation replications, iterate over the remaining scenario parameters
+  # These are the actual core simulation replications:
+  # iterate over the remaining scenario parameters
   tar_map_rep(
     name = simreps,
     values = expand.grid(
@@ -117,7 +119,12 @@ simulation_pipeline_main <- tar_map(
           "misspec_FG" = params_weibull_lfps
         )
       ),
-      args_missingness = list(mech_params = list("prob_missing" = prop_missing, "mechanism_expr" = "1.5 * Z")),
+      args_missingness = list(
+        mech_params = list(
+          "prob_missing" = prop_missing,
+          "mechanism_expr" = "1.5 * Z" # X is MAR on Z
+        )
+      ),
       args_imputations = list(
         m = num_imputations,
         iters = num_cycles,
@@ -163,50 +170,18 @@ summarized_sims <- list(
   tar_combine(
     simulations_main,
     simulation_pipeline_main[["simreps"]],
-    command = {
-      setDT(vctrs::vec_c(!!!.x))[, .(
-        coefs = list(rbindlist(coefs_summary, idcol = "rep_id")),
-        preds = list(rbindlist(preds_summary, idcol = "rep_id"))
-      ), by = c("prob_space","failure_time_model", "censoring_type", "method")]
-    }
+    command = collapse_nested_pipeline(
+      obj = vctrs::vec_c(!!!.x),
+      byvars = c("prob_space","failure_time_model", "censoring_type", "method")
+    )
   ),
   tar_target(
     coefs_main,
-    command = {
-      df <- rbindlist(
-        with(
-          simulations_main,
-          Map(
-            f = cbind,
-            method = method,
-            coefs,
-            prob_space = prob_space,
-            failure_time_model = failure_time_model,
-            censoring_type = censoring_type
-          )
-        ), fill = TRUE
-      )
-      df[, term := ifelse(grepl(pattern = "^X", term), "X", as.character(term))]
-    }
+    command = collapsed_pipeline_to_df(simulations_main, type = "coefs")
   ),
   tar_target(
     preds_main,
-    command = {
-      df <- rbindlist(
-        with(
-          simulations_main,
-          Map(
-            f = cbind,
-            method = method,
-            preds,
-            prob_space = prob_space,
-            failure_time_model = failure_time_model,
-            censoring_type = censoring_type
-          )
-        ), fill = TRUE
-      )
-      df[is.na(imp), imp := 0]
-    }
+    command = collapsed_pipeline_to_df(simulations_main, type = "preds")
   ),
   tar_target(
     pooled_preds_main,
@@ -215,6 +190,7 @@ summarized_sims <- list(
   )
 )
 
+# For the applied example
 applied_imp_settings <- list(
   num_imputations = 100,
   num_cycles = 20,
@@ -240,10 +216,111 @@ applied_example <- list(
 )
 
 
+# Supplementary simulations
+extra_sims <- tar_map(
+  unlist = FALSE,
+  # Again iterate over the values of p, re-use existing targets
+  values = list("p" = prob_space_domin),
+  tar_target(
+    params_extra,
+    if (p == 0.15) true_params_correct_FG_0.15 else true_params_correct_FG_0.65
+  ),
+  # First the MAR-T ones
+  tar_rep(
+    simreps_mar_t,
+    reps = 2, # reps_per_batch
+    batches = 1, # num_batches
+    command = one_replication(
+      args_event_times = list(
+        mechanism = "correct_FG",
+        censoring_type = "exponential",
+        params = params_extra
+      ),
+      # X is MAR on a standardized version of log time, same mechanism strength
+      args_missingness = list(
+        mech_params = list(
+          "prob_missing" = prop_missing,
+          "mechanism_expr" = "1.5 * scale(log(time))"
+        )
+      ),
+      args_imputations = list(
+        m = num_imputations,
+        iters = num_cycles,
+        rjlimit = 1000,
+        rhs_kmi = "1"
+      ),
+      args_predictions = list(timepoints = pred_timepoints),
+      true_betas = params_extra$cause1$betas
+    ) |>
+      cbind(prob_space = p)
+  ),
+  # Censoring depending on Z, either ignored or accounted for in kmi
+  tar_map_rep(
+    name = simreps_covar_cens,
+    values = list("rhs_kmi" = c("1", "Z")),
+    combine = TRUE,
+    reps = 2, # reps_per_batch
+    batches = 1, # num_batches
+    command = one_replication(
+      args_event_times = list(
+        mechanism = "correct_FG",
+        censoring_type = "exponential",
+        censoring_params = list("exponential" = "0.49 * exp(Z)"),
+        params = params_extra
+      ),
+      args_missingness = list(
+        mech_params = list(
+          "prob_missing" = prop_missing,
+          "mechanism_expr" = "1.5 * Z"
+        )
+      ),
+      args_imputations = list(
+        m = num_imputations,
+        iters = num_cycles,
+        rjlimit = 1000,
+        rhs_kmi = rhs_kmi # New: switch marginal and ~ Z when imputing cens times
+      ),
+      args_predictions = list(timepoints = pred_timepoints),
+      true_betas = params_extra$cause1$betas
+    ) |>
+      cbind(prob_space = p)
+  )
+)
+
+# Summarize the extra simulations..
+summarized_extra_sims <- list(
+  extra_sims,
+  tar_combine(
+    mar_t_main,
+    extra_sims[["simreps_mar_t"]],
+    command = collapse_nested_pipeline(
+      obj = vctrs::vec_c(!!!.x),
+      byvars = c("prob_space", "method")
+    )
+  ),
+  tar_combine(
+    covar_cens_main,
+    extra_sims[["simreps_covar_cens"]],
+    command = collapse_nested_pipeline(
+      obj = vctrs::vec_c(!!!.x),
+      byvars = c("prob_space", "method", "rhs_kmi")
+    )
+  ),
+  tar_target(
+    mar_t_coefs,
+    command = collapsed_pipeline_to_df(mar_t_main, type = "coefs")
+  ),
+  tar_target(
+    covar_cens_coefs,
+    command = collapsed_pipeline_to_df(covar_cens_main, type = "coefs")
+  )
+)
+
 # Here we bring everything together
 list(
   applied_example,
   summarized_sims,
-  tar_quarto(simulation_results, path = "analysis/simulation-results.qmd"),
-  tar_quarto(supplement, path = "analysis/supplementary-material.qmd")
+  summarized_extra_sims
+  #tar_quarto(simulation_results, path = "analysis/simulation-results.qmd"),
+  #tar_quarto(supplement, path = "analysis/supplementary-material.qmd")
 )

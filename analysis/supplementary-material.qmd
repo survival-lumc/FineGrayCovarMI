@@ -453,6 +453,17 @@ attr(df_predz$WEIGLOSS_allo1, "label") <- ">10% Weight loss prior to transplanta
 
 data_dict_caption <- "Data dictionary. CMV: cytomegalovirus; HLA: human leukocyte antigen; HCT-CI: Hematopoietic stem cell transplantation-comorbidity index; MF: myelofibrosis."
 
+# tbl_summary(
+#   df_predz,
+#   missing_text = "(Missing)",
+#   type = all_dichotomous() ~ "categorical"
+# ) |> 
+#   as_tibble() |> 
+#   write.csv2(
+#     file = "MI-FG_data-dictionary.csv",
+#     row.names = FALSE
+#   )
+
 tbl_test <- tbl_summary(
   df_predz,
   missing_text = "(Missing)",
@@ -510,7 +521,7 @@ legend(
 )
 ```
 
-## Pooled regression coefficeints
+## Pooled regression coefficients
 
 ```{r}
 #| echo: false
