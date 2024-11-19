@@ -217,6 +217,10 @@ applied_example <- list(
 
 
 # Supplementary simulations
+# .. we are going to batch this so it goes quicker
+num_batches_extra <- 2
+reps_per_batch_extra <- ceiling(num_replications / num_batches_extra)
+
 extra_sims <- tar_map(
   unlist = FALSE,
   # Again iterate over the values of p, re-use existing targets
@@ -228,8 +232,8 @@ extra_sims <- tar_map(
   # First the MAR-T ones
   tar_rep(
     simreps_mar_t,
-    reps = 2, # reps_per_batch
-    batches = 1, # num_batches
+    reps = reps_per_batch_extra,
+    batches = num_batches_extra,
     command = one_replication(
       args_event_times = list(
         mechanism = "correct_FG",
@@ -240,7 +244,7 @@ extra_sims <- tar_map(
       args_missingness = list(
         mech_params = list(
           "prob_missing" = prop_missing,
-          "mechanism_expr" = "1.5 * scale(log(time))"
+          "mechanism_expr" = "-1.5 * scale(log(time))" # minus because less likely missing with more follow-up; consider making eta weaker
         )
       ),
       args_imputations = list(
@@ -259,8 +263,8 @@ extra_sims <- tar_map(
     name = simreps_covar_cens,
     values = list("rhs_kmi" = c("1", "Z")),
     combine = TRUE,
-    reps = 2, # reps_per_batch
-    batches = 1, # num_batches
+    reps = reps_per_batch_extra,
+    batches = num_batches_extra,
     command = one_replication(
       args_event_times = list(
         mechanism = "correct_FG",

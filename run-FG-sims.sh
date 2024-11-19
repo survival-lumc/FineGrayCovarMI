@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH -J MI-FG
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=3
+#SBATCH --ntasks-per-node=12
 #SBATCH --partition=all
-#SBATCH --time=0-00:59:00
-#SBATCH --mem-per-cpu=15G
+#SBATCH --time=0-16:00:00
+#SBATCH --mem-per-cpu=10G
 
 
 # Purge
