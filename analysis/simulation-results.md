@@ -1,5 +1,6 @@
 # Simulation study
 
+
 - [Scenarios set-up](#scenarios-set-up)
 - [Log subdistribution hazard
   ratios](#log-subdistribution-hazard-ratios)
@@ -11,6 +12,10 @@
   - [Covariates and missing data
     mechanism](#covariates-and-missing-data-mechanism)
   - [Censoring plots](#censoring-plots)
+- [Supplementary simulations: outcome-dependent
+  missingness](#supplementary-simulations-outcome-dependent-missingness)
+- [Supplementary simulations: covariate-dependent
+  censoring](#supplementary-simulations-covariate-dependent-censoring)
 
 ## Scenarios set-up
 
@@ -71,3 +76,11 @@
 ### Censoring plots
 
 ![](figures/cens-imps-plot-1.png)
+
+## Supplementary simulations: outcome-dependent missingness
+
+<img src="figures/rel-bias-plots-mart-1.png" style="width:80.0%" />
+
+## Supplementary simulations: covariate-dependent censoring
+
+<img src="figures/rel-bias-plots-covarcens-1.png" style="width:80.0%" />

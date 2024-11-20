@@ -72,6 +72,9 @@ pooled_preds_main[, ':=' (
   method = factor(method, levels = names(method_labs), labels = method_labs),
   censoring_type = factor(censoring_type, levels = c("none", "exponential", "admin"))
 )]
+
+# Some global plot settings
+lims_rel_bias <- c(-30, 30)
 ```
 
 ## Scenarios set-up
@@ -295,13 +298,13 @@ for (i in seq_along(covars)) {
     failure_time_model * censoring_type ~ prob_space,
     labeller = all_labels
   ) +
-  coord_flip(ylim = c(-30, 30)) +
+  coord_flip(ylim = lims_rel_bias) +
   theme(
     axis.text.x = element_text(angle = 90, hjust = 1),
     legend.position = "none",
     plot.margin = margin(0, 0, 0, 0)
   ) +
-  scale_y_continuous(breaks = as.numeric(outer(seq(0, 30, by = 10), c(1, -1)))) +
+  scale_y_continuous(breaks = as.numeric(outer(seq(0, lims_rel_bias[2], by = 10), c(1, -1)))) +
   scale_x_discrete(limits = rev) +
   geom_hline(
     aes(yintercept = 0),
@@ -818,4 +821,170 @@ ggsave(
 )
 ```
 
+
+## Supplementary simulations: outcome-dependent missingness
+
+```{r}
+#| label: rel-bias-plots-mart
+#| fig-height: 5
+#| out-width: '80%'
+
+tar_load(mar_t_coefs, store = here::here("_targets"))
+
+mar_t_coefs[, ':=' (
+  method = factor(method, levels = names(method_labs), labels = method_labs)
+)]
+
+mar_t_coefs[, relbias := 100 * (estimate - true) / true]
+
+df <- mar_t_coefs[method != "Full"]
+df[, ':=' (
+  term = factor(term, levels = c("X", "Z"), labels = c("beta[1]", "beta[2]")),
+  prob_space = factor(prob_space, levels = c("0.15", "0.65"), labels = c("p~`=`~0.15", "p~`=`~ 0.65"))
+)]
+
+
+p <- df |>
+  ggplot(aes(method, relbias)) +
+  facet_grid(
+    term ~ prob_space,
+    labeller = label_parsed
+  ) +
+  coord_flip(ylim = lims_rel_bias) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    legend.position = "none",
+    plot.margin = margin(0, 0, 0, 0)
+  ) +
+  scale_y_continuous(breaks = as.numeric(outer(seq(0, lims_rel_bias[2], by = 10), c(1, -1)))) +
+  scale_x_discrete(limits = rev) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "solid",
+    linewidth = 1,
+    col = cols[3],
+    alpha = 1
+  ) +
+  stat_summary(
+    geom = "segment",
+    fun = function(x) mean(x) - crit * (sd(x) / sqrt(length(x))),
+    fun.max = function(x) mean(x) + crit * (sd(x) / sqrt(length(x))),
+    aes(xend = method, yend = after_stat(ymax), col = method),
+    lineend = "round",
+    linewidth = 4,
+    alpha = 0.75
+  ) +
+  stat_summary(
+    geom = "point", # potentially crossbar
+    fun = function(x) mean(x)
+    #width = 0.2
+  ) +
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
+  labs(x = "Method", y = "Relative bias in % (Monte Carlo error 95% interval)")
+  
+print(p)
+  
+  # if (covars[i] == "X") {
+  #   ggsave(
+  #     plot = p,
+  #     filename = here::here("analysis/figures/bias_X.pdf"),
+  #     width = 7,
+  #     scale = 1.25,
+  #     height = 10,
+  #     device = cairo_pdf
+  #   )
+  # }
+
+```
+
+
+## Supplementary simulations: covariate-dependent censoring
+
+```{r}
+#| label: rel-bias-plots-covarcens
+#| fig-height: 7
+#| out-width: '80%'
+
+tar_load(covar_cens_coefs, store = here::here("_targets"))
+
+covar_cens_coefs[, relbias := 100 * (estimate - true) / true]
+
+covar_cens_coefs[, ':=' (
+  method = factor(method, levels = names(method_labs), labels = method_labs),
+  rhs_kmi = factor(
+    rhs_kmi, 
+    levels = c("1", "Z"), 
+    labels = c("Marginal (incorrect)", "Stratif. by Z (correct)")
+  )
+)]
+
+df <- covar_cens_coefs[method != "Full"]
+df[, ':=' (
+  term = factor(term, levels = c("X", "Z"), labels = c("beta[1]", "beta[2]")),
+  prob_space = factor(prob_space, levels = c("0.15", "0.65"), labels = c("p~`=`~0.15", "p~`=`~ 0.65"))
+)]
+
+df |>
+  ggplot(aes(method, relbias, shape = rhs_kmi)) +
+  facet_grid(
+    term ~ prob_space,
+    labeller = label_parsed
+  ) +
+  coord_flip(ylim = c(-40, 40)) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    legend.position = "top",
+    plot.margin = margin(0, 0, 0, 0)
+  ) +
+  scale_y_continuous(breaks = as.numeric(outer(seq(0, 40, by = 10), c(1, -1)))) +
+  #scale_x_discrete(limits = rev) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "solid",
+    linewidth = 1,
+    col = cols[3],
+    alpha = 1
+  ) +
+  stat_summary(
+    data = df[rhs_kmi == "Marginal (incorrect)"],
+    geom = "segment",
+    fun = function(x) mean(x) - crit * (sd(x) / sqrt(length(x))),
+    fun.max = function(x) mean(x) + crit * (sd(x) / sqrt(length(x))),
+    aes(xend = method, yend = after_stat(ymax), col = method),
+    lineend = "round",
+    linewidth = 4,
+    alpha = 0.75,
+    position = position_nudge(x = 0.1, y = 0)
+  ) +
+  stat_summary(
+    data = df[rhs_kmi == "Marginal (incorrect)"],
+    geom = "point", 
+    fun = function(x) mean(x),
+    position = position_nudge(x = 0.1, y = 0)
+  ) +
+  stat_summary(
+    data = df[rhs_kmi == "Stratif. by Z (correct)"],
+    geom = "segment",
+    fun = function(x) mean(x) - crit * (sd(x) / sqrt(length(x))),
+    fun.max = function(x) mean(x) + crit * (sd(x) / sqrt(length(x))),
+    aes(xend = method, yend = after_stat(ymax), col = method),
+    lineend = "round",
+    linewidth = 4,
+    alpha = 0.75,
+    position = position_nudge(x = -0.1, y = 0)
+  ) + 
+  stat_summary(
+    data = df[rhs_kmi == "Stratif. by Z (correct)"],
+    geom = "point", # potentially crossbar
+    fun = function(x) mean(x),
+    position = position_nudge(x = -0.1, y = 0)
+  ) + 
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)], guide = "none") +
+  labs(
+    x = "Method", 
+    y = "Relative bias in % (Monte Carlo error 95% interval)", 
+    shape = "Censoring model:"
+  ) +
+  scale_shape_manual(values = c(4, 16))
+```
 
