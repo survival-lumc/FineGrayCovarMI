@@ -600,10 +600,13 @@ for (i in seq_along(pats)) {
 
 ### Covariates and missing data mechanism
 
+- MAR conditional on Z (detail here again)
+
 ```{r}
 #| label: miss-mech-plot
-#| out-width: "100%"
+#| out-width: "70%"
 #| fig-height: 7
+
 dat_missmech <- generate_dataset(
   n = 2000,
   args_event_times = list(
@@ -616,7 +619,16 @@ dat_missmech <- generate_dataset(
   )
 )
 
-dat_missmech[, prob_miss_X := plogis(1.5 * Z)]
+# Find the intercept again
+intercept_shift <- uniroot(
+  f = function(eta_0, linpred, prob) mean(plogis(eta_0 + linpred)) - prob,
+  interval = c(-25, 25),
+  extendInt = "yes",
+  linpred = with(dat_missmech, 1.5 * Z),
+  prob =  0.4
+)$`root`
+
+dat_missmech[, prob_miss_X := plogis(1.5 * Z + intercept_shift)]
 
 p_jitt <- dat_missmech |> 
   ggplot(aes(Z, X_obs, col = prob_miss_X)) +
@@ -626,12 +638,62 @@ p_jitt <- dat_missmech |>
   labs(y = "X", col = "Probability\nX missing")
 
 p_logis <- dat_missmech |> 
-  ggplot(aes(Z, plogis(1.5 * Z))) +
+  ggplot(aes(Z, prob_miss_X)) +
   geom_line(linewidth = 2, col = cols[6]) +
   labs(y = "Probability of X missing")
 
 p_logis / p_jitt  
 ```
+
+
+- MAR conditional on observed competing event time
+
+```{r}
+#| label: miss-mech-plot_mart
+#| out-width: "70%"
+#| fig-height: 7
+
+dat_missmech <- generate_dataset(
+  n = 2000,
+  args_event_times = list(
+    mechanism = "correct_FG",
+    params = tar_read(true_params_correct_FG_0.15, store = here::here("_targets")),
+    censoring_type = "none"
+  ),
+  args_missingness = list(
+    mech_params = list("prob_missing" = 0.4, "mechanism_expr" = "-1.5 * log(time + 1)")
+  )
+)
+
+# Find the intercept again
+intercept_shift <- uniroot(
+  f = function(eta_0, linpred, prob) mean(plogis(eta_0 + linpred)) - prob,
+  interval = c(-25, 25),
+  extendInt = "yes",
+  linpred = with(dat_missmech, -1.5 * log(time + 1)),
+  prob =  0.4
+)$`root`
+
+dat_missmech[, prob_miss_X := plogis(-1.5 * log(time + 1) + intercept_shift)]
+
+# Potentially on log scale, let's see
+p_jitt <- dat_missmech |> 
+  ggplot(aes(time, X_obs, col = prob_miss_X)) +
+  geom_jitter(aes(shape = factor(X_missind)), height = 0.25, alpha = 0.35, size = 2.5) +
+  scale_color_viridis_c(direction = -1) +
+  scale_shape_manual("X missing", values = c(16, 17), labels = c("No", "Yes")) +
+  labs(y = "X", col = "Probability\nX missing", x = "Observed competing event time") +
+  coord_cartesian(xlim = c(0, 10))
+
+p_logis <- dat_missmech |> 
+  ggplot(aes(time, prob_miss_X)) +
+  geom_line(linewidth = 2, col = cols[6]) +
+  labs(y = "Probability of X missing", x = "Observed competing event time") +
+  coord_cartesian(ylim = c(0, 1), xlim = c(0, 10))
+
+p_logis / p_jitt  
+```
+
 
 ### Censoring plots
 

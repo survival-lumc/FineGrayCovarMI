@@ -240,11 +240,11 @@ extra_sims <- tar_map(
         censoring_type = "exponential",
         params = params_extra
       ),
-      # X is MAR on a standardized version of log time, same mechanism strength
+      # X is MAR on log(time + 1)
       args_missingness = list(
         mech_params = list(
           "prob_missing" = prop_missing,
-          "mechanism_expr" = "-1.5 * scale(log(time))" # minus because less likely missing with more follow-up; consider making eta weaker
+          "mechanism_expr" = "-1.5 * log(time + 1)" # minus because less likely missing with more follow-up; consider making eta weaker
         )
       ),
       args_imputations = list(

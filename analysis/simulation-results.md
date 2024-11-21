@@ -71,7 +71,13 @@
 
 ### Covariates and missing data mechanism
 
-<img src="figures/miss-mech-plot-1.png" style="width:100.0%" />
+- MAR conditional on Z (detail here again)
+
+<img src="figures/miss-mech-plot-1.png" style="width:70.0%" />
+
+- MAR conditional on observed competing event time
+
+<img src="figures/miss-mech-plot_mart-1.png" style="width:70.0%" />
 
 ### Censoring plots
 
