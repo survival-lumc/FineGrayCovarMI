@@ -999,7 +999,7 @@ df |>
     plot.margin = margin(0, 0, 0, 0)
   ) +
   scale_y_continuous(breaks = as.numeric(outer(seq(0, 40, by = 10), c(1, -1)))) +
-  #scale_x_discrete(limits = rev) +
+  scale_x_discrete(limits = rev) +
   geom_hline(
     yintercept = 0,
     linetype = "solid",
