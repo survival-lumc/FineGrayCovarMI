@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J MI-FG
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=12
+#SBATCH --ntasks-per-node=4
 #SBATCH --partition=all
-#SBATCH --time=0-16:00:00
+#SBATCH --time=0-10:00:00
 #SBATCH --mem-per-cpu=10G
 
 
