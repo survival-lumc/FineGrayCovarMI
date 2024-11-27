@@ -71,6 +71,8 @@
 
 ### Covariates and missing data mechanism
 
+(Make this into quartet and put in supplement!)
+
 - MAR conditional on Z (detail here again)
 
 <img src="figures/miss-mech-plot-1.png" style="width:70.0%" />

@@ -232,10 +232,10 @@ p1 / p2 / p3
 ggsave(
   plot = p1 / p2 / p3,
   here::here("analysis/figures/scenarios_vis.pdf"), 
-  dpi = 300,
   width = 13,
   height = 9,
-  device = cairo_pdf
+  family = "Roboto Condensed",
+  device = CairoPDF
 )
 ```
 
@@ -339,7 +339,8 @@ for (i in seq_along(covars)) {
       width = 7,
       scale = 1.25,
       height = 10,
-      device = cairo_pdf
+      family = "Roboto Condensed",
+      device = CairoPDF
     )
   }
   
@@ -443,7 +444,8 @@ for (i in seq_along(covars)) {
       width = 7,
       scale = 1.25,
       height = 10,
-      device = cairo_pdf
+      family = "Roboto Condensed",
+      device = CairoPDF
     )
   }
   
@@ -587,7 +589,8 @@ for (i in seq_along(pats)) {
     width = 7,
     scale = 1.5,
     height = 10,
-    device = cairo_pdf
+    family = "Roboto Condensed",
+    device = CairoPDF
   )
   
   cat("\n")
@@ -599,6 +602,8 @@ for (i in seq_along(pats)) {
 ## Miscellaneous 
 
 ### Covariates and missing data mechanism
+
+(Make this into quartet and put in supplement!)
 
 - MAR conditional on Z (detail here again)
 
@@ -879,7 +884,8 @@ ggsave(
   filename = here::here("analysis/figures/cens_appendix.pdf"), 
   width = 9,
   height = 10,
-  device = cairo_pdf
+  family = "Roboto Condensed",
+  device = CairoPDF
 )
 ```
 
