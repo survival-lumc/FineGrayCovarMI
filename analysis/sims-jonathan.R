@@ -16,7 +16,8 @@ one_replication <- function(n = 2000) {
   X <- rbinom(n = n, size = 1, prob = plogis(0.5 * Z))
 
   # MAR on Z, approx 50% missings
-  missind_X <- rbinom(n = n, size = 1, prob = plogis(Z))
+  #missind_X <- rbinom(n = n, size = 1, prob = plogis(Z))
+  missind_X <- rbinom(n = n, size = 1, prob = plogis(X))
 
   # Censoring conditional on X, approx 65% will be censored
   #cens <- rexp(n = n, rate = 0.18 * exp(X))
@@ -38,27 +39,27 @@ one_replication <- function(n = 2000) {
   iters <- 15
 
   # Approach 1: usual SMC-FCS
-  imps_smcfcs <- smcfcs(
-    originaldata = dat,
-    method = meths_smcfcs,
-    smtype = "coxph",
-    smformula = "Surv(time, D) ~ X + Z",
-    m = m,
-    numit = iters
-  )
-
-  # Approach 2: SMC-FCS with censoring as competing event
-  # imps_smcfcs_cens <- smcfcs(
+  # imps_smcfcs <- smcfcs(
   #   originaldata = dat,
   #   method = meths_smcfcs,
-  #   smtype = "compet",
-  #   smformula = list(
-  #     "Surv(time, compev_ind == 1) ~ X + Z",
-  #     "Surv(time, compev_ind == 2) ~ X + Z"
-  #   ),
+  #   smtype = "coxph",
+  #   smformula = "Surv(time, D) ~ X + Z",
   #   m = m,
   #   numit = iters
   # )
+
+  # Approach 2: SMC-FCS with censoring as competing event
+  imps_smcfcs <- smcfcs(
+    originaldata = dat,
+    method = meths_smcfcs,
+    smtype = "compet",
+    smformula = list(
+      "Surv(time, compev_ind == 1) ~ X + Z",
+      "Surv(time, compev_ind == 2) ~ X + Z"
+    ),
+    m = m,
+    numit = iters
+  )
 
   # NOTE: I originally did the below, which feels like it should work but it
   # goes completely wrong!
@@ -95,7 +96,7 @@ one_replication <- function(n = 2000) {
   #rbind(res_smcfcs, res_smcfcs_cens)
 }
 
-n_reps <- 75 # this will take approx 10 mins if using 3 cores
+n_reps <- 50 # this will take approx 10 mins if using 3 cores
 
 plan(multisession, workers = 3)
 sims <- future_replicate(

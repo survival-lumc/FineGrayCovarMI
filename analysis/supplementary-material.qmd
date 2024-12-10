@@ -333,6 +333,14 @@ dat_mods[, summary(pool(as.list(mod))), by = "method"]
 
 \newpage
 
+# Full simulation study results
+
+```{r}
+# Put all figures here! 
+```
+
+\newpage
+
 # Applied data example
 
 ```{r}
@@ -409,6 +417,7 @@ ggplot2::ggsave(
 ```{r}
 #| echo: false
 #| warning: false
+#| label: tbl-data-dict
 
 library(gtsummary)
 library(kableExtra)
@@ -525,6 +534,7 @@ legend(
 
 ```{r}
 #| echo: false
+#| label: tbl-pooled-coefs
 
 pooled_mods <- applied_dat_pooled$pooled_coefs
 pooled_mods[, summ := paste0(

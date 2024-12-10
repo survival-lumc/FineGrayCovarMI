@@ -44,14 +44,28 @@
 \setlength{\emergencystretch}{3em} % prevent overfull lines
 \setcounter{secnumdepth}{5}
 % Make \paragraph and \subparagraph free-standing
+\makeatletter
 \ifx\paragraph\undefined\else
   \let\oldparagraph\paragraph
-  \renewcommand{\paragraph}[1]{\oldparagraph{#1}\mbox{}}
+  \renewcommand{\paragraph}{
+    \@ifstar
+      \xxxParagraphStar
+      \xxxParagraphNoStar
+  }
+  \newcommand{\xxxParagraphStar}[1]{\oldparagraph*{#1}\mbox{}}
+  \newcommand{\xxxParagraphNoStar}[1]{\oldparagraph{#1}\mbox{}}
 \fi
 \ifx\subparagraph\undefined\else
   \let\oldsubparagraph\subparagraph
-  \renewcommand{\subparagraph}[1]{\oldsubparagraph{#1}\mbox{}}
+  \renewcommand{\subparagraph}{
+    \@ifstar
+      \xxxSubParagraphStar
+      \xxxSubParagraphNoStar
+  }
+  \newcommand{\xxxSubParagraphStar}[1]{\oldsubparagraph*{#1}\mbox{}}
+  \newcommand{\xxxSubParagraphNoStar}[1]{\oldsubparagraph{#1}\mbox{}}
 \fi
+\makeatother
 
 \usepackage{color}
 \usepackage{fancyvrb}
@@ -71,7 +85,7 @@
 \newcommand{\CommentTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
 \newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{\textit{#1}}}
 \newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
-\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{\textbf{#1}}}
 \newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
 \newcommand{\DecValTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
 \newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{\textit{#1}}}
@@ -81,7 +95,7 @@
 \newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.28,0.35,0.67}{#1}}
 \newcommand{\ImportTok}[1]{\textcolor[rgb]{0.00,0.46,0.62}{#1}}
 \newcommand{\InformationTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
-\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{\textbf{#1}}}
 \newcommand{\NormalTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
 \newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
 \newcommand{\OtherTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
@@ -147,10 +161,6 @@
 \usepackage{longtable}
 \renewcommand{\thesection}{S\arabic{section}}
 \makeatletter
-\makeatother
-\makeatletter
-\makeatother
-\makeatletter
 \@ifpackageloaded{caption}{}{\usepackage{caption}}
 \AtBeginDocument{%
 \ifdefined\contentsname
@@ -186,15 +196,17 @@
 \newcommand*\listoflistings{\listof{codelisting}{List of Listings}}
 \makeatother
 \makeatletter
+\makeatother
+\makeatletter
 \@ifpackageloaded{caption}{}{\usepackage{caption}}
 \@ifpackageloaded{subcaption}{}{\usepackage{subcaption}}
 \makeatother
-\makeatletter
-\makeatother
+
 \ifLuaTeX
   \usepackage{selnolig}  % disable illegal ligatures
 \fi
-\IfFileExists{bookmark.sty}{\usepackage{bookmark}}{\usepackage{hyperref}}
+\usepackage{bookmark}
+
 \IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
 \urlstyle{same} % disable monospaced font for URLs
 \hypersetup{
@@ -206,6 +218,7 @@
   citecolor={Blue},
   urlcolor={Blue},
   pdfcreator={LaTeX via pandoc}}
+
 
 % See: https://stackoverflow.com/questions/75040607/why-do-affiliations-not-show-up-anywhere-in-the-pdf-output-of-quarto
 \title{Supplement to: Multiple imputation of missing covariates when
@@ -236,8 +249,9 @@ Fondazione IRCCS Policlinico San Matteo di Pavia, Italy}
 \date{}
 \begin{document}
 \maketitle
-\hypertarget{minimal-code-example}{%
-\section{Minimal code example}\label{minimal-code-example}}
+
+
+\section{Minimal code example}\label{minimal-code-example}
 
 This is the minimal \texttt{R} code companion to section 3.4 of main
 manuscript. The parameters from the simulation study scenario with
@@ -509,9 +523,9 @@ Lambda1   0    0 0 0 0  0  0  0  0        0        0       0
 \NormalTok{  imps }\OtherTok{\textless{}{-}} \FunctionTok{rbind.data.frame}\NormalTok{(}
     \FunctionTok{cbind}\NormalTok{(}\AttributeTok{method =} \StringTok{"CCA"}\NormalTok{, imp\_dat),}
     \FunctionTok{cbind}\NormalTok{(}\AttributeTok{method =} \StringTok{"cs\_smc"}\NormalTok{, imps\_cs\_smc}\SpecialCharTok{$}\NormalTok{impDatasets[[}\DecValTok{1}\NormalTok{]]),}
-    \FunctionTok{cbind}\NormalTok{(}\AttributeTok{method =} \StringTok{"cs\_approx"}\NormalTok{, }\FunctionTok{complete}\NormalTok{(imps\_cs\_approx, }\AttributeTok{action =}\NormalTok{ 1L)),}
+    \FunctionTok{cbind}\NormalTok{(}\AttributeTok{method =} \StringTok{"cs\_approx"}\NormalTok{, }\FunctionTok{complete}\NormalTok{(imps\_cs\_approx, }\AttributeTok{action =} \DecValTok{1}\NormalTok{L)),}
     \FunctionTok{cbind}\NormalTok{(}\AttributeTok{method =} \StringTok{"fg\_smc"}\NormalTok{, imps\_fg\_smc}\SpecialCharTok{$}\NormalTok{impDatasets[[}\DecValTok{1}\NormalTok{]]),}
-    \FunctionTok{cbind}\NormalTok{(}\AttributeTok{method =} \StringTok{"fg\_approx"}\NormalTok{, }\FunctionTok{complete}\NormalTok{(imps\_cs\_approx, }\AttributeTok{action =}\NormalTok{ 1L))}
+    \FunctionTok{cbind}\NormalTok{(}\AttributeTok{method =} \StringTok{"fg\_approx"}\NormalTok{, }\FunctionTok{complete}\NormalTok{(imps\_cs\_approx, }\AttributeTok{action =} \DecValTok{1}\NormalTok{L))}
 \NormalTok{  )}
   \FunctionTok{return}\NormalTok{(imps)}
 \NormalTok{\})}
@@ -537,30 +551,32 @@ Lambda1   0    0 0 0 0  0  0  0  0        0        0       0
 \end{Shaded}
 
 \begin{verbatim}
-       .imp    method   id     time D    X      Z D1 D2         H1         H2
-    1:    1       CCA    1 0.491195 0    1  0.126  0  0 0.16736459 0.55436927
-    2:    1       CCA    3 0.910797 0    0 -1.571  0  0 0.25761243 0.83833716
-    3:    1       CCA    8 0.036202 1 <NA>  1.564  1  0 0.02028935 0.09603222
-    4:    1       CCA    9 0.046798 0    0 -1.653  0  0 0.02606228 0.10990397
-    5:    1       CCA   10 0.997413 0 <NA> -1.196  0  0 0.27549886 0.87116320
-   ---                                                                       
-49996:    5 fg_approx 1992 0.319702 2    0 -2.670  0  1 0.12370372 0.43826433
-49997:    5 fg_approx 1993 0.229071 2    0 -0.243  0  1 0.09740419 0.35023923
-49998:    5 fg_approx 1994 1.836303 2    1 -0.366  0  1 0.47538639 1.23075745
-49999:    5 fg_approx 1997 0.702380 2    0  0.283  0  1 0.21877205 0.71087168
-50000:    5 fg_approx 1999 0.023554 2    1  1.377  0  1 0.01356742 0.06584427
-       newtimes newevent    Lambda1
-    1: 0.491195        0 0.12385222
-    2: 0.910797        0 0.16659793
-    3: 0.036202        1 0.01932257
-    4: 0.046798        0 0.02452308
-    5: 0.997413        0 0.17340532
-   ---                             
-49996: 0.957205        0 0.17116627
-49997: 0.453168        0 0.12098105
-49998: 2.841599        0 0.25988878
-49999: 1.170590        0 0.19454317
-50000: 2.997529        0 0.26284736
+        .imp    method    id     time      D      X      Z    D1    D2
+       <int>    <char> <int>    <num> <fctr> <fctr>  <num> <num> <num>
+    1:     1       CCA     1 0.491195      0      1  0.126     0     0
+    2:     1       CCA     3 0.910797      0      0 -1.571     0     0
+    3:     1       CCA     8 0.036202      1   <NA>  1.564     1     0
+    4:     1       CCA     9 0.046798      0      0 -1.653     0     0
+    5:     1       CCA    10 0.997413      0   <NA> -1.196     0     0
+   ---                                                                
+49996:     5 fg_approx  1992 0.319702      2      0 -2.670     0     1
+49997:     5 fg_approx  1993 0.229071      2      0 -0.243     0     1
+49998:     5 fg_approx  1994 1.836303      2      1 -0.366     0     1
+49999:     5 fg_approx  1997 0.702380      2      0  0.283     0     1
+50000:     5 fg_approx  1999 0.023554      2      1  1.377     0     1
+               H1         H2 newtimes newevent    Lambda1
+            <num>      <num>    <num>   <fctr>      <num>
+    1: 0.16736459 0.55436927 0.491195        0 0.12385222
+    2: 0.25761243 0.83833716 0.910797        0 0.16659793
+    3: 0.02028935 0.09603222 0.036202        1 0.01932257
+    4: 0.02606228 0.10990397 0.046798        0 0.02452308
+    5: 0.27549886 0.87116320 0.997413        0 0.17340532
+   ---                                                   
+49996: 0.12370372 0.43826433 0.957205        0 0.17116627
+49997: 0.09740419 0.35023923 0.453168        0 0.12098105
+49998: 0.47538639 1.23075745 2.841599        0 0.25988878
+49999: 0.21877205 0.71087168 1.170590        0 0.19454317
+50000: 0.01356742 0.06584427 2.997529        0 0.26284736
 \end{verbatim}
 
 \begin{Shaded}
@@ -600,33 +616,34 @@ Lambda1   0    0 0 0 0  0  0  0  0        0        0       0
 \end{Shaded}
 
 \begin{verbatim}
-       method .imp         mod
- 1:       CCA    1 <coxph[22]>
- 2:    cs_smc    1 <coxph[21]>
- 3: cs_approx    1 <coxph[21]>
- 4:    fg_smc    1 <coxph[21]>
- 5: fg_approx    1 <coxph[21]>
- 6:       CCA    2 <coxph[22]>
- 7:    cs_smc    2 <coxph[21]>
- 8: cs_approx    2 <coxph[21]>
- 9:    fg_smc    2 <coxph[21]>
-10: fg_approx    2 <coxph[21]>
-11:       CCA    3 <coxph[22]>
-12:    cs_smc    3 <coxph[21]>
-13: cs_approx    3 <coxph[21]>
-14:    fg_smc    3 <coxph[21]>
-15: fg_approx    3 <coxph[21]>
-16:       CCA    4 <coxph[22]>
-17:    cs_smc    4 <coxph[21]>
-18: cs_approx    4 <coxph[21]>
-19:    fg_smc    4 <coxph[21]>
-20: fg_approx    4 <coxph[21]>
-21:       CCA    5 <coxph[22]>
-22:    cs_smc    5 <coxph[21]>
-23: cs_approx    5 <coxph[21]>
-24:    fg_smc    5 <coxph[21]>
-25: fg_approx    5 <coxph[21]>
-       method .imp         mod
+       method  .imp         mod
+       <char> <int>      <list>
+ 1:       CCA     1 <coxph[22]>
+ 2:    cs_smc     1 <coxph[21]>
+ 3: cs_approx     1 <coxph[21]>
+ 4:    fg_smc     1 <coxph[21]>
+ 5: fg_approx     1 <coxph[21]>
+ 6:       CCA     2 <coxph[22]>
+ 7:    cs_smc     2 <coxph[21]>
+ 8: cs_approx     2 <coxph[21]>
+ 9:    fg_smc     2 <coxph[21]>
+10: fg_approx     2 <coxph[21]>
+11:       CCA     3 <coxph[22]>
+12:    cs_smc     3 <coxph[21]>
+13: cs_approx     3 <coxph[21]>
+14:    fg_smc     3 <coxph[21]>
+15: fg_approx     3 <coxph[21]>
+16:       CCA     4 <coxph[22]>
+17:    cs_smc     4 <coxph[21]>
+18: cs_approx     4 <coxph[21]>
+19:    fg_smc     4 <coxph[21]>
+20: fg_approx     4 <coxph[21]>
+21:       CCA     5 <coxph[22]>
+22:    cs_smc     5 <coxph[21]>
+23: cs_approx     5 <coxph[21]>
+24:    fg_smc     5 <coxph[21]>
+25: fg_approx     5 <coxph[21]>
+       method  .imp         mod
 \end{verbatim}
 
 \begin{Shaded}
@@ -636,29 +653,35 @@ Lambda1   0    0 0 0 0  0  0  0  0        0        0       0
 \end{Shaded}
 
 \begin{verbatim}
-       method term  estimate  std.error statistic         df      p.value
- 1:       CCA   X1 0.7781281 0.17916465  4.343089 152.067624 2.554742e-05
- 2:       CCA    Z 0.4003856 0.10186017  3.930737 145.744472 1.304356e-04
- 3:    cs_smc   X1 0.6980657 0.18538543  3.765483  14.973349 1.875994e-03
- 4:    cs_smc    Z 0.5079436 0.06538007  7.769090  93.531830 9.965454e-12
- 5: cs_approx   X1 0.6092265 0.19461615  3.130400  12.205414 8.525728e-03
- 6: cs_approx    Z 0.5225790 0.06779656  7.708046  58.618467 1.775328e-10
- 7:    fg_smc   X1 0.7768682 0.21722362  3.576352   9.883541 5.136286e-03
- 8:    fg_smc    Z 0.4920664 0.06519244  7.547906 105.385333 1.659276e-11
- 9: fg_approx   X1 0.6092265 0.19461615  3.130400  12.205414 8.525728e-03
-10: fg_approx    Z 0.5225790 0.06779656  7.708046  58.618467 1.775328e-10
+       method   term  estimate  std.error statistic         df      p.value
+       <char> <fctr>     <num>      <num>     <num>      <num>        <num>
+ 1:       CCA     X1 0.7781281 0.17916465  4.343089 152.067624 2.554742e-05
+ 2:       CCA      Z 0.4003856 0.10186017  3.930737 145.744472 1.304356e-04
+ 3:    cs_smc     X1 0.6980657 0.18538543  3.765483  14.973349 1.875994e-03
+ 4:    cs_smc      Z 0.5079436 0.06538007  7.769090  93.531830 9.965454e-12
+ 5: cs_approx     X1 0.6092265 0.19461615  3.130400  12.205414 8.525728e-03
+ 6: cs_approx      Z 0.5225790 0.06779656  7.708046  58.618467 1.775328e-10
+ 7:    fg_smc     X1 0.7768682 0.21722362  3.576352   9.883541 5.136286e-03
+ 8:    fg_smc      Z 0.4920664 0.06519244  7.547906 105.385333 1.659276e-11
+ 9: fg_approx     X1 0.6092265 0.19461615  3.130400  12.205414 8.525728e-03
+10: fg_approx      Z 0.5225790 0.06779656  7.708046  58.618467 1.775328e-10
 \end{verbatim}
 
 \newpage
 
-\hypertarget{applied-data-example}{%
-\section{Applied data example}\label{applied-data-example}}
+\section{Applied data example}\label{applied-data-example}
 
-\hypertarget{data-dictionary}{%
-\subsection{Data dictionary}\label{data-dictionary}}
+\subsection{Data dictionary}\label{data-dictionary}
 
 \begin{longtable}[t]{lc}
-\caption{Data dictionary. CMV: cytomegalovirus; HLA: human leukocyte antigen; HCT-CI: Hematopoietic stem cell transplantation-comorbidity index; MF: myelofibrosis.}\\
+
+\caption{\label{tbl-data-dict}Data dictionary. CMV: cytomegalovirus;
+HLA: human leukocyte antigen; HCT-CI: Hematopoietic stem cell
+transplantation-comorbidity index; MF: myelofibrosis.}
+
+\tabularnewline
+
+\\
 \toprule
 Characteristic & N = 3,982\\
 \midrule
@@ -721,11 +744,11 @@ White blood cell count (WBC, x$10^9$/L) & 7 (4, 14)\\
 Year of transplantation & 2,015.0 (2,012.0, 2,018.0)\\
 \bottomrule
 \multicolumn{2}{l}{\rule{0pt}{1em}\textsuperscript{1} Median (IQR); n (\%)}\\
+
 \end{longtable}
 
-\hypertarget{non-parametric-cumulative-incidence-curves}{%
 \subsection{Non-parametric cumulative incidence
-curves}\label{non-parametric-cumulative-incidence-curves}}
+curves}\label{non-parametric-cumulative-incidence-curves}
 
 \begin{figure}[H]
 
@@ -737,16 +760,23 @@ curves}\label{non-parametric-cumulative-incidence-curves}}
 competing relapse and non-relapse mortality, in dataset of 3982 primary
 and secondary myelofibrosis patients.}
 
-\end{figure}
+\end{figure}%
 
-\hypertarget{pooled-regression-coefficeints}{%
 \subsection{Pooled regression
-coefficeints}\label{pooled-regression-coefficeints}}
+coefficients}\label{pooled-regression-coefficients}
 
 \begingroup\fontsize{9}{11}\selectfont
 
 \begin{longtable}[t]{lrrr}
-\caption{Pooled log hazard ratios [log HR, 95\% confidence interval] for Fine--Gray model for relapse, cause-specific Cox model relapse, and cause-specific Cox model for non-relapse mortality (NRM).}\\
+
+\caption{\label{tbl-pooled-coefs}Pooled log hazard ratios {[}log HR,
+95\% confidence interval{]} for Fine--Gray model for relapse,
+cause-specific Cox model relapse, and cause-specific Cox model for
+non-relapse mortality (NRM).}
+
+\tabularnewline
+
+\\
 \toprule
 Term + method & Relapse subdist.~log HR & Relapse cause-spec.~log HR & NRM cause-spec.~log HR\\
 \midrule
@@ -901,8 +931,11 @@ Term + method & Relapse subdist.~log HR & Relapse cause-spec.~log HR & NRM cause
 \hspace{1em}CS-Approx & -0.09 [-0.35, 0.17] & -0.12 [-0.38, 0.14] & -0.24 [-0.46, -0.02]\\
 \hspace{1em}FG-SMC & -0.08 [-0.34, 0.17] & -0.12 [-0.37, 0.14] & -0.24 [-0.46, -0.03]\\
 \hspace{1em}FG-Approx & -0.08 [-0.34, 0.17] & -0.11 [-0.37, 0.14] & -0.24 [-0.46, -0.03]\\*
+
 \end{longtable}
+
 \endgroup{}
+
 
 
 
