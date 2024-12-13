@@ -352,7 +352,9 @@ used to generate the example dataset below.
   \AttributeTok{data =}\NormalTok{ dat,}
   \AttributeTok{etype =}\NormalTok{ D,}
   \AttributeTok{failcode =} \DecValTok{1}\NormalTok{, }\CommentTok{\# Specify event of interest}
-  \AttributeTok{nimp =}\NormalTok{ M}
+  \AttributeTok{nimp =}\NormalTok{ M,}
+  \CommentTok{\#nboot = M, \# Bootstrap for uncertainty in P(C \textgreater{} t)}
+  \CommentTok{\#bootstrap = TRUE}
 \NormalTok{)}
 \end{Highlighting}
 \end{Shaded}
@@ -480,7 +482,7 @@ Lambda1   0    0 0 0 0  0  0  0  0        0        0       0
 \NormalTok{list\_imps }\OtherTok{\textless{}{-}} \FunctionTok{lapply}\NormalTok{(list\_to\_impute, }\ControlFlowTok{function}\NormalTok{(imp\_dat) \{}
 
 \NormalTok{  m }\OtherTok{\textless{}{-}} \DecValTok{1}
-\NormalTok{  iters }\OtherTok{\textless{}{-}} \DecValTok{10}
+\NormalTok{  iters }\OtherTok{\textless{}{-}} \DecValTok{10} \CommentTok{\# Often upwards of 15 or 20 needed: check convergence}
   
 \NormalTok{  imps\_cs\_approx }\OtherTok{\textless{}{-}} \FunctionTok{mice}\NormalTok{(}
     \AttributeTok{data =}\NormalTok{ imp\_dat,}
@@ -669,6 +671,17 @@ Lambda1   0    0 0 0 0  0  0  0  0        0        0       0
 
 \newpage
 
+\section{Simulation study results}\label{simulation-study-results}
+
+\subsection{Additional simulations}\label{additional-simulations}
+
+\includegraphics{figures/rel-bias-plots-mart-1.pdf}
+
+\subsection{Supplementary simulations: covariate-dependent
+censoring}\label{supplementary-simulations-covariate-dependent-censoring}
+
+\newpage
+
 \section{Applied data example}\label{applied-data-example}
 
 \subsection{Data dictionary}\label{data-dictionary}
@@ -749,18 +762,6 @@ Year of transplantation & 2,015.0 (2,012.0, 2,018.0)\\
 
 \subsection{Non-parametric cumulative incidence
 curves}\label{non-parametric-cumulative-incidence-curves}
-
-\begin{figure}[H]
-
-{\centering \includegraphics{figures/MF-cuminc-plot-1.pdf}
-
-}
-
-\caption{Stacked non-parametric cumulative incidence curves for
-competing relapse and non-relapse mortality, in dataset of 3982 primary
-and secondary myelofibrosis patients.}
-
-\end{figure}%
 
 \subsection{Pooled regression
 coefficients}\label{pooled-regression-coefficients}

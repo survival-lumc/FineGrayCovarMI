@@ -275,6 +275,7 @@ generate_covariates <- function(n, X_type = "binary") {
   return(dat)
 }
 
+library(brglm2)
 
 one_replication <- function(n = 2000) {
 
@@ -294,9 +295,10 @@ one_replication <- function(n = 2000) {
   }
 
   # Not proper but it works
-  kmi_parametric <<- function(time, d, x, z, dist = "weibullPH") {
-    mod <- flexsurvreg(Surv(time, d == 0) ~ x + z, dist = dist,
-                       inits = c(1.25, 10, -1, -1))
+  kmi_parametric <<- function(time, d, x, z, dist = "exp") {
+    #mod <- flexsurvreg(Surv(time, d == 0) ~ x + z, dist = dist,
+    #                   inits = c(1.25, 10, -1, -1))
+    mod <- flexsurvreg(Surv(time, d == 0) ~ x + z, dist = dist)
     potential_cens <- simulate(
       mod,
       nsim = 1,
@@ -313,8 +315,11 @@ one_replication <- function(n = 2000) {
     n = n,
     args_event_times = list(
       mechanism = "correct_FG",
-      censoring_type = "none",
-      #censoring_params = list("exponential" = "1.2 * exp((as.numeric(X) - 1) + Z)"), # like 55
+      censoring_type = "exponential",
+      censoring_params = list(
+        "exponential" = "1.2 * exp((as.numeric(X) - 1) + Z)"
+        #"exponential" = "0.5 * exp((as.numeric(X) - 1) + Z + Z^2 + (as.numeric(X) - 1)^2)" # quadratic cens model
+      ), # like 55
       params = params
     ),
     args_missingness = list(
@@ -325,15 +330,7 @@ one_replication <- function(n = 2000) {
     )
   )
 
-  dat[, cens_time := rweibull_KM(
-    n = n,
-    shape = 1.25,
-    rate = 10 * exp(-(as.numeric(X_obs) - 1) - Z)
-  )]
-  dat[, ':=' (
-    D = as.numeric(time < cens_time) * as.numeric(D),
-    time = pmin(cens_time, time)
-  )]
+  # Method with brglm2
 
   prop.table(table(dat$D))
 
@@ -359,13 +356,14 @@ one_replication <- function(n = 2000) {
   predmat["V", c("time", "D", "X", "Z")] <- 1
   predmat["Lambda_01", c("V", "D1", "X", "Z")] <- 1
   predmat["H_cens", c("V", "D1", "X", "Z")] <- 1
-  predmat["Lambda_01_Z", c("Lambda_01", "Z")] <- 1
-  predmat["H_cens_Z", c("H_cens", "Z")] <- 1
+  #predmat["Lambda_01_Z", c("Lambda_01", "Z")] <- 1
+  #predmat["H_cens_Z", c("H_cens", "Z")] <- 1
 
   # Now two variants: with and without H_cens (censoring as competing event)
   predmat_compet <- predmat
-  predmat_compet["X", c("Z", "D1", "Lambda_01", "H_cens", "Lambda_01_Z", "H_cens_Z")] <- 1
-  predmat["X", c("Z", "D1", "Lambda_01", "Lambda_01_Z")] <- 1
+  #predmat_compet["X", c("Z", "D1", "Lambda_01", "H_cens", "Lambda_01_Z", "H_cens_Z")] <- 1
+  #predmat["X", c("Z", "D1", "Lambda_01", "Lambda_01_Z")] <- 1
+  predmat["X", c("Z", "D1", "Lambda_01", "H_cens")] <- 1
 
   # The methods
   meths <- make.method(dat)
@@ -374,9 +372,11 @@ one_replication <- function(n = 2000) {
   meths["Lambda_01"] <- paste("~I(", expression(nelsaalen(V, D1, X, Z)),")")
   #meths["H_cens"] <- paste("~I(", expression(nelsaalen(V, 1 - D1, 1, 1)),")")
   #meths["Lambda_01"] <- paste("~I(", expression(nelsaalen(V, D1, 1, 1)),")") #nelso
-  meths["Lambda_01_Z"] <- "~I(Lambda_01 * Z)"
-  meths["H_cens_Z"] <- "~I(H_cens * Z)"
-  meths["X"] <- "logreg"
+  #meths["Lambda_01_Z"] <- "~I(Lambda_01 * Z)"
+  #meths["H_cens_Z"] <- "~I(H_cens * Z)"
+  meths["X"] <- "rf"
+
+  #dat[, "X" := as.integer(as.numeric(X) - 1)]
 
   # Let's go
   m <- 10
@@ -389,36 +389,40 @@ one_replication <- function(n = 2000) {
     maxit = iters,
     predictorMatrix = predmat,
     visitSequence = c(
-      "V", "Lambda_01", "Lambda_01_Z", "X"
-    )
+      "V", "Lambda_01", "H_cens", "X"
+    ),
+    remove.collinear = FALSE,
+    remove.constant = FALSE
   )
-  imps_compet <- mice(
-    data = data.frame(dat),
-    method = meths,
-    m = m,
-    maxit = iters,
-    predictorMatrix = predmat_compet,
-    visitSequence = c(
-      "V", "Lambda_01", "H_cens", "Lambda_01_Z", "H_cens_Z", "X"
-    )
-  )
+  # imps_compet <- mice(
+  #   data = data.frame(dat),
+  #   method = meths,
+  #   m = m,
+  #   maxit = iters,
+  #   predictorMatrix = predmat_compet,
+  #   visitSequence = c(
+  #     "V", "Lambda_01", "H_cens", "Lambda_01_Z", "H_cens_Z", "X"
+  #   ),
+  #   remove.collinear = FALSE,
+  #   remove.constant = FALSE
+  # )
 
   # Bind results
   rbind(
     cbind(
       tidy(pool(with(imps, coxph(Surv(V, D1) ~ X + Z)))),
       method = "standard"
-    ),
-    cbind(
-      tidy(pool(with(imps_compet, coxph(Surv(V, D1) ~ X + Z)))),
-      method = "cens_compet"
-    )
+    )#,
+    # cbind(
+    #   tidy(pool(with(imps_compet, coxph(Surv(V, D1) ~ X + Z)))),
+    #   method = "cens_compet"
+    # )
   )
 }
 
 
 # First with Nels, then cum bseline
-n_reps <- 50
+n_reps <- 30
 plan(multisession, workers = 3)
 sims <- future_replicate(
   n = n_reps,
@@ -464,3 +468,255 @@ rbindlist(complete(imps_compet, "all"), idcol = ".imp") |>
 
 
 
+
+# Try some visuals --------------------------------------------------------
+
+
+params <- tar_read(true_params_correct_FG_0.15)
+params$cause1$betas <- c(0.75, 0.5)
+
+dat <- generate_dataset(
+  n = 200000,
+  args_event_times = list(
+    mechanism = "correct_FG",
+    censoring_type = "exponential",
+    censoring_params = list(
+      #"exponential" = "1.2 * exp((as.numeric(X) - 1) + Z)"
+      "exponential" = "0.49 * exp((as.numeric(X) - 1))"
+      #"exponential" = "0.5 * exp((as.numeric(X) - 1) + Z + Z^2 + (as.numeric(X) - 1)^2)" # quadratic cens model
+    ), # like 55
+    params = params
+  ),
+  args_missingness = list(
+    mech_params = list(
+      "prob_missing" = 0,
+      "mechanism_expr" = "1.5 * Z"
+    )
+  )
+)
+
+prop.table(table(dat$D))
+dat[, V := time * (D == 1) + cens_time * (D != 1)]
+dat[, D1 := factor(as.numeric(D == 1))]
+dat[, F_01 := params$cause1$p * (
+  1 - exp(-params$cause1$base_rate * V^params$cause1$base_shape)
+)]
+dat[, Lambda_01 := -log(1 - F_01)]
+dat[, H_cens := 0.49 * V] # baseline
+
+melt.data.table(
+  dat,
+  measure.vars = c("Lambda_01", "H_cens"),
+  variable.name = "cumhaz_type",
+  value.name = "cumhaz"
+) |>
+  ggplot(aes(cumhaz, as.numeric(X) - 1,
+             col = D1, linetype = factor(Z))) +
+  #geom_point(aes(shape = factor(Z))) +
+  geom_smooth(
+    method = "gam",
+    formula = y ~ s(x, bs = "cs"),
+    method.args = list(family = "quasibinomial"),
+    se = FALSE
+  ) +
+  coord_trans(y = "qlogit", xlim = c(0, 2.5)) +
+  facet_wrap(~ cumhaz_type)
+
+
+library(scales)
+
+#logit_trans()
+qlogit_trans <- function() trans_new(
+  "qlogit", transform = function(x) qlogis(x), inverse = function(x) plogis(x)
+)
+
+dat |>
+  ggplot(aes(Lambda_01, as.numeric(X) - 1,
+             col = D1, linetype = factor(Z))) +
+  #geom_point(aes(shape = factor(Z))) +
+  geom_smooth(
+    method = "gam",
+    formula = y ~ s(x, bs = "cs"),
+    method.args = list(family = "quasibinomial"),
+    se = FALSE
+  ) +
+  coord_trans(y = "qlogit") +
+  facet_wrap(~ D1)
+
+
+
+
+
+library(ggeffects)
+mod <- glm(X ~ D1 + Z * Lambda_01, data = dat, family = binomial())
+predict_response(mod, terms = c("Lambda_01", "D1", "Z")) |>
+  plot()
+
+
+newdf <- expand.grid(
+  Z = c(0, 1),
+  D1 = factor(c(0, 1)),
+  Lambda_01 = seq(0, 0.20, by = 0.01)
+)
+
+cbind.data.frame(
+  newdf, preds = predict(mod, newdata = newdf)
+) |>
+  ggplot(aes(Lambda_01, preds, col = D1)) +
+  geom_point(aes(shape = factor(Z)))
+
+
+tn <- trans_new
+
+
+
+# THE sims ----------------------------------------------------------------
+
+
+
+library("targets")
+library("tarchetypes")
+library("future")
+library("future.callr")
+library("future.apply")
+library("here")
+library(flexsurv)
+library(brglm2)
+
+source(here("packages.R"))
+invisible(lapply(list.files(here("R"), full.names = TRUE), source))
+set.seed(82249)
+
+params <- tar_read(true_params_correct_FG_0.15)
+params$cause1$betas <- c(1, 1)
+
+# Make Z binary
+generate_dataset <- function(n,
+                             args_event_times,
+                             args_missingness,
+                             args_covariates = list(X_type = "normal")) {
+
+  dat <- do.call(generate_covariates, args = c(list(n = n), args_covariates))
+  do.call(add_event_times, args = c(list(dat = dat), args_event_times))
+  do.call(add_missingness, args = c(list(dat = dat), args_missingness))
+  add_cumhaz_to_dat(dat)
+  return(dat[])
+}
+
+one_replication <- function(n = 2000) {
+
+  dat <- generate_dataset(
+    n = n,
+    args_event_times = list(
+      mechanism = "correct_FG",
+      censoring_type = "exponential",
+      censoring_params = list(
+        "exponential" = "1.5 * exp(-X + Z + Z^2)"
+        #"exponential" = "0.5 * exp((as.numeric(X) - 1) + Z + Z^2 + (as.numeric(X) - 1)^2)" # quadratic cens model
+      ), # like 55
+      params = params
+    ),
+    args_missingness = list(
+      mech_params = list(
+        "prob_missing" = 0.4,
+        "mechanism_expr" = "1.5 * Z"
+      )
+    )
+  )
+
+  #prop.table(table(dat$D))
+  #      0       1       2
+  #0.58795 0.18906 0.22299
+
+  # Known censoring times
+  dat[, ':=' (
+    V = time * (D == 1) + cens_time * (D != 1),
+    D1 = as.numeric(D == 1),
+    compev_ind = as.numeric(D != 1) + 1
+  )]
+
+  # SMC-FCS settings, no rejection sampling needed since X binary
+  meths_smcfcs <- make.method(dat, defaultMethod = c("norm", "logreg", "mlogit", "podds"))
+  m <- 5
+  iters <- 20
+
+  # Approach 1: usual SMC-FCS
+  imps_smcfcs <- smcfcs(
+    originaldata = dat,
+    method = meths_smcfcs,
+    smtype = "coxph",
+    smformula = "Surv(V, D1) ~ X + Z",
+    m = m,
+    numit = iters,
+    rjlimit = 5000
+  )
+
+  # Approach 2: SMC-FCS with censoring as competing event
+  imps_smcfcs_cens <- smcfcs(
+    originaldata = dat,
+    method = meths_smcfcs,
+    smtype = "compet",
+    smformula = list(
+      "Surv(V, compev_ind == 1) ~ X + Z",
+      "Surv(V, compev_ind == 2) ~ X + Z + I(Z^2)"
+    ),
+    m = m,
+    numit = iters,
+    rjlimit = 5000
+  )
+
+  #plot(imps_smcfcs)
+  #plot(imps_smcfcs_cens)
+
+  # Pool
+  res_smcfcs <- lapply(imps_smcfcs$impDatasets, function(impdat) {
+    formula = coxph(Surv(V, D1) ~ X + Z, data = impdat)
+  }) |>
+    pool() |>
+    tidy() |>
+    cbind("method" = "smcfcs", true = c(1, 1))
+
+  res_smcfcs_cens <- lapply(imps_smcfcs_cens$impDatasets, function(impdat) {
+    formula = coxph(Surv(V, D1) ~ X + Z, data = impdat)
+  }) |>
+    pool() |>
+    tidy() |>
+    cbind("method" = "smcfcs_cens", true = c(1, 1))
+
+  rbind(res_smcfcs, res_smcfcs_cens)
+}
+
+
+n_reps <- 50 # this will take approx 10 mins if using 3 cores
+
+plan(multisession, workers = 3)
+sims <- future_replicate(
+  n = n_reps,
+  expr = one_replication(n = 2000),
+  simplify = FALSE
+)
+plan(sequential)
+
+
+crit <- qnorm((1 - 0.95) / 2, lower.tail = FALSE)
+
+rbindlist(sims, idcol = "simrep") |>
+  ggplot(aes(method, estimate, fill = method)) +
+  #geom_violin(trim = FALSE) +
+  facet_wrap(~ term, scales = "free") +
+  geom_hline(aes(yintercept = true), linetype = "dotted") +
+  # For the monte carlo boxes
+  stat_summary(
+    fun = function(x) mean(x),
+    fun.min = function(x) mean(x) - crit * (sd(x) / sqrt(length(x))),
+    fun.max = function(x) mean(x) + crit * (sd(x) / sqrt(length(x))),
+    geom = "crossbar",
+    alpha = 0.5,
+    aes(fill = method),
+    fatten = 1,
+    linewidth = 0.25
+  ) +
+  theme_bw() +
+  scale_y_continuous(breaks = seq(0.7, 1.3, by = 0.1)) +
+  coord_cartesian(ylim = c(0.7, 1.3)) +
+  labs(y = "Pooled estimate [Monte Carlo SE of bias]")

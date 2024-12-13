@@ -71,15 +71,34 @@ knitr:
     fig.path: "figures/"
 ---
 
-
 ```{r}
 #| label: setup
 #| warning: false
 #| echo: false
-#| fig-cap-location: top
+#| fig-cap-location: top # add to Yamls!!
+
+testing_cairo <- function(filename, width, height, ...) {
+  Cairo::CairoPDF(file = filename, width = width, height = height, ...)
+}
+
+
 
 # Add this to quarto pipeline after
 source(here::here("packages.R"))
+library(extrafont)
+library(Cairo)
+#font_import()
+
+#windowsFonts(sans="Roboto")
+#loadfonts(device="win")
+#loadfonts(device="all")
+#loadfonts()
+
+#font_files() |> View()
+
+## Automatically use showtext to render text for future devices
+#showtext_auto()
+
 invisible(lapply(list.files(here::here("R"), full.names = TRUE), source))
 options(contrasts = rep("contr.treatment", 2))
 
@@ -137,10 +156,7 @@ dat_minimal <- generate_dataset(
 dat_minimal[, ':=' (time = round(time, digits = 6), Z = round(Z, digits = 3))]
 dat <- data.frame(dat_minimal[order(id), c("id", "time", "D", "X", "Z")])
 rownames(dat) <- NULL
-
-#See suppl of https://onlinelibrary.wiley.com/doi/full/10.1002/sim.8387
 ```
-
 
 ```{r loading}
 #| warning: false
@@ -158,7 +174,7 @@ sapply(dat, class)
 nrow(dat)
 ```
 
-1. Add columns $\hat{H}_1(T)$ and $\hat{H}_2(T)$ to the original data, which are the marginal cause-specific cumulative hazards for each competing risk evaluated at an individual's event or censoring time (obtained using the Nelson--Aalen estimator).
+1.  Add columns $\hat{H}_1(T)$ and $\hat{H}_2(T)$ to the original data, which are the marginal cause-specific cumulative hazards for each competing risk evaluated at an individual's event or censoring time (obtained using the Nelson--Aalen estimator).
 
 ```{r}
 # Add cause-specific event indicators + cumulative hazards
@@ -168,9 +184,7 @@ dat$H1 <- nelsonaalen(data = dat, timevar = "time", statusvar = "D1")
 dat$H2 <- nelsonaalen(data = dat, timevar = "time", statusvar = "D2")
 ```
 
-2. Multiply impute the potential censoring for those failing from cause 2 using \{kmi\}, yielding $m$ censoring complete datasets (i.e. with "complete" $V$). Any completely observed covariates that are known to affect the probability of being censored should be included as predictors in the model for the censoring process. \{kmi\} imputes based on stratified Kaplan--Meier when $Z$ are categorical, and based on a Cox model when at least one of $Z$ are continuous.
-
-<!-- Mention administrative censoring here -->
+2.  Multiply impute the potential censoring for those failing from cause 2 using {kmi}, yielding $m$ censoring complete datasets (i.e. with "complete" $V$). Any completely observed covariates that are known to affect the probability of being censored should be included as predictors in the model for the censoring process. {kmi} imputes based on stratified Kaplan--Meier when $Z$ are categorical, and based on a Cox model when at least one of $Z$ are continuous.
 
 ```{r}
 # 5 imputed datasets
@@ -182,11 +196,13 @@ cens_imps <- kmi(
   data = dat,
   etype = D,
   failcode = 1, # Specify event of interest
-  nimp = M
+  nimp = M,
+  #nboot = M, # Bootstrap for uncertainty in P(C > t)
+  #bootstrap = TRUE
 )
 ```
 
-3. In each censoring complete dataset, add an additional column $\hat{\Lambda}_1(V)$. This takes the value of the marginal cumulative subdistribution hazard for cause 1 at an individual's observed or imputed subdistribution time, obtained with the Nelson--Aalen estimator based on $I(D = 1)$ and imputed $V$.
+3.  In each censoring complete dataset, add an additional column $\hat{\Lambda}_1(V)$. This takes the value of the marginal cumulative subdistribution hazard for cause 1 at an individual's observed or imputed subdistribution time, obtained with the Nelson--Aalen estimator based on $I(D = 1)$ and imputed $V$.
 
 ```{r}
 # Preparation for covariate imputation: 
@@ -209,7 +225,7 @@ list_to_impute <- lapply(cens_imps$imputed.data, function(imp_dat) {
 head(list_to_impute[[1]])
 ```
 
-4. In each censoring complete dataset (each with different $V$ and $\hat{\Lambda}_1(V)$, but same $\hat{H}_1(T)$ and $\hat{H}_2(T)$), create a single imputed dataset using the desired covariate imputation method(s).
+4.  In each censoring complete dataset (each with different $V$ and $\hat{\Lambda}_1(V)$, but same $\hat{H}_1(T)$ and $\hat{H}_2(T)$), create a single imputed dataset using the desired covariate imputation method(s).
 
 ```{r}
 # Prepare predictor matrices for MICE using first censoring complete dataset
@@ -244,7 +260,7 @@ methods_smcfcs
 list_imps <- lapply(list_to_impute, function(imp_dat) {
 
   m <- 1
-  iters <- 10
+  iters <- 10 # Often upwards of 15 or 20 needed: check convergence
   
   imps_cs_approx <- mice(
     data = imp_dat,
@@ -295,9 +311,7 @@ list_imps <- lapply(list_to_impute, function(imp_dat) {
 })
 ```
 
-<!-- Note about assessing convergence -->
-
-5. Fit the Fine--Gray substantive model in each imputed dataset (using standard Cox software with $I(D = 1)$ and imputed $V$ as outcome variables), and pool the estimates using Rubin's rules.
+5.  Fit the Fine--Gray substantive model in each imputed dataset (using standard Cox software with $I(D = 1)$ and imputed $V$ as outcome variables), and pool the estimates using Rubin's rules.
 
 ```{r}
 #| label: step_5
@@ -333,10 +347,205 @@ dat_mods[, summary(pool(as.list(mod))), by = "method"]
 
 \newpage
 
-# Full simulation study results
+# Simulation study results
+
+## Additional simulations
 
 ```{r}
-# Put all figures here! 
+#| echo: false
+
+testing_cairo <- function(filename, width, height,  ...) {
+  Cairo::CairoPDF(
+    file = filename,
+    width = width,
+    height = height,
+    family = "Roboto Condensed",
+    ...
+  )
+  #grDevices::cairo_pdf
+  #grDevices::cairo_pdf(...)
+}
+```
+
+```{r}
+#| echo: false
+#| label: rel-bias-plots-mart
+#| dev: "cairo_pdf"
+##| fig-ext: "pdf"
+
+##| dev: "cairo_pdf"
+##| dev: "testing_cairo"
+##| fig-ext: "pdf"
+##| dev.args: list(family = "Roboto Condensed")
+##| fig-height: 5
+##|z fig-pos: 'H'
+##| fig-cap: "Someting."
+##| fig-cap-location: top
+
+tar_load(mar_t_coefs, store = here::here("_targets"))
+
+lims_rel_bias <- c(-30, 30)
+crit <- qnorm((1 - 0.95) / 2, lower.tail = FALSE)
+
+method_labs <- c(
+  "full" = "Full",
+  "CCA" = "CCA",
+  "smcfcs_comp" = "CS-SMC",
+  "mice_comp" = "CS-Approx",
+  "smcfcs_finegray" = "FG-SMC",
+  "mice_subdist" = "FG-Approx"
+)
+
+mar_t_coefs[, ':=' (
+  method = factor(method, levels = names(method_labs), labels = method_labs),
+  relbias = 100 * (estimate - true) / true
+)]
+
+df <- mar_t_coefs[method != "Full"]
+df[, ':=' (
+  term = factor(term, levels = c("X", "Z"), labels = c("beta[1]", "beta[2]")),
+  prob_space = factor(prob_space, levels = c("0.15", "0.65"), labels = c("p~`=`~0.15", "p~`=`~ 0.65"))
+)]
+
+
+p <- df |>
+  ggplot(aes(method, relbias)) +
+  facet_grid(
+    term ~ prob_space,
+    labeller = label_parsed
+  ) +
+  coord_flip(ylim = lims_rel_bias) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    legend.position = "none",
+    plot.margin = margin(0, 0, 0, 0)
+  ) +
+  scale_y_continuous(breaks = as.numeric(outer(seq(0, lims_rel_bias[2], by = 10), c(1, -1)))) +
+  scale_x_discrete(limits = rev) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "solid",
+    linewidth = 1,
+    col = cols[3],
+    alpha = 1
+  ) +
+  stat_summary(
+    geom = "segment",
+    fun = function(x) mean(x) - crit * (sd(x) / sqrt(length(x))),
+    fun.max = function(x) mean(x) + crit * (sd(x) / sqrt(length(x))),
+    aes(xend = method, yend = after_stat(ymax), col = method),
+    lineend = "round",
+    linewidth = 4,
+    alpha = 0.75
+  ) +
+  stat_summary(
+    geom = "point", # potentially crossbar
+    fun = function(x) mean(x)
+    #width = 0.2
+  ) +
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
+  labs(x = "Method", y = "Relative bias in % (Monte Carlo error 95% interval)")
+
+p #+
+ # theme(
+  #  axis.title = element_text(family = "Roboto Condensed")
+  #)
+#   
+# CairoPDF(filename = "hi.pdf")
+# print(p)
+# dev.off()
+```
+
+## Supplementary simulations: covariate-dependent censoring
+
+```{r}
+#| echo: false
+#| eval: false
+#| label: rel-bias-covar-cens
+#| dev: "testing_cairo"
+#| fig-ext: "pdf"
+
+tar_load(covar_cens_coefs, store = here::here("_targets"))
+
+covar_cens_coefs[, relbias := 100 * (estimate - true) / true]
+
+covar_cens_coefs[, ':=' (
+  method = factor(method, levels = names(method_labs), labels = method_labs),
+  rhs_kmi = factor(
+    rhs_kmi, 
+    levels = c("1", "Z"), 
+    labels = c("Marginal (incorrect)", "Stratif. by Z (correct)")
+  )
+)]
+
+df <- covar_cens_coefs[method != "Full"]
+df[, ':=' (
+  term = factor(term, levels = c("X", "Z"), labels = c("beta[1]", "beta[2]")),
+  prob_space = factor(prob_space, levels = c("0.15", "0.65"), labels = c("p~`=`~0.15", "p~`=`~ 0.65"))
+)]
+
+df |>
+  ggplot(aes(method, relbias, shape = rhs_kmi)) +
+  facet_grid(
+    term ~ prob_space,
+    labeller = label_parsed
+  ) +
+  coord_flip(ylim = c(-40, 40)) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    legend.position = "top",
+    plot.margin = margin(0, 0, 0, 0)
+  ) +
+  scale_y_continuous(breaks = as.numeric(outer(seq(0, 40, by = 10), c(1, -1)))) +
+  scale_x_discrete(limits = rev) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "solid",
+    linewidth = 1,
+    col = cols[3],
+    alpha = 1
+  ) +
+  stat_summary(
+    data = df[rhs_kmi == "Marginal (incorrect)"],
+    geom = "segment",
+    fun = function(x) mean(x) - crit * (sd(x) / sqrt(length(x))),
+    fun.max = function(x) mean(x) + crit * (sd(x) / sqrt(length(x))),
+    aes(xend = method, yend = after_stat(ymax), col = method),
+    lineend = "round",
+    linewidth = 4,
+    alpha = 0.75,
+    position = position_nudge(x = 0.1, y = 0)
+  ) +
+  stat_summary(
+    data = df[rhs_kmi == "Marginal (incorrect)"],
+    geom = "point", 
+    fun = function(x) mean(x),
+    position = position_nudge(x = 0.1, y = 0)
+  ) +
+  stat_summary(
+    data = df[rhs_kmi == "Stratif. by Z (correct)"],
+    geom = "segment",
+    fun = function(x) mean(x) - crit * (sd(x) / sqrt(length(x))),
+    fun.max = function(x) mean(x) + crit * (sd(x) / sqrt(length(x))),
+    aes(xend = method, yend = after_stat(ymax), col = method),
+    lineend = "round",
+    linewidth = 4,
+    alpha = 0.75,
+    position = position_nudge(x = -0.1, y = 0)
+  ) + 
+  stat_summary(
+    data = df[rhs_kmi == "Stratif. by Z (correct)"],
+    geom = "point", # potentially crossbar
+    fun = function(x) mean(x),
+    position = position_nudge(x = -0.1, y = 0)
+  ) + 
+  scale_color_manual(values = cols[c(1, 2, 6, 4, 5)], guide = "none") +
+  labs(
+    x = "Method", 
+    y = "Relative bias in % (Monte Carlo error 95% interval)", 
+    shape = "Censoring model:"
+  ) +
+  scale_shape_manual(values = c(4, 16))
 ```
 
 \newpage
@@ -346,6 +555,7 @@ dat_mods[, summary(pool(as.list(mod))), by = "method"]
 ```{r}
 #| echo: false
 #| results: false
+#| label: applied-dat-cumincs
 
 # Load in the good stuff
 tar_load(applied_dat, store = here::here("_targets"))
@@ -353,7 +563,6 @@ tar_load(applied_dat_pooled, store = here::here("_targets"))
 dat <- applied_dat$dat
 sm_predictors <- applied_dat$sm_predictors
 
-#
 preds_final <- applied_dat_pooled$pooled_cumincs
 method_labs <- c(
   "Compl. cases" = "CCA",
@@ -424,7 +633,7 @@ library(kableExtra)
 
 # Tbl summary
 df <- applied_dat$dat
-df_predz <- copy(df[, ..sm_predictors]) #|>
+df_predz <- copy(df[, ..sm_predictors]) 
 # Re-transform for descriptives
 df_predz[, ':=' (
   age_allo1_decades = (age_allo1_decades + 6) * 10,
@@ -462,6 +671,7 @@ attr(df_predz$WEIGLOSS_allo1, "label") <- ">10% Weight loss prior to transplanta
 
 data_dict_caption <- "Data dictionary. CMV: cytomegalovirus; HLA: human leukocyte antigen; HCT-CI: Hematopoietic stem cell transplantation-comorbidity index; MF: myelofibrosis."
 
+# For thesis:
 # tbl_summary(
 #   df_predz,
 #   missing_text = "(Missing)",
@@ -493,17 +703,20 @@ gsub(tbl_test, pattern = "%", replacement = "\\\\%")
 ## Non-parametric cumulative incidence curves
 
 ```{r}
-#| label: MF-cuminc-plot
-#| fig-width: 9
-#| fig-height: 7
-#| dev: cairo_pdf
 #| echo: false
-#| fig-pos: 'H'
-#| fig-cap: "Stacked non-parametric cumulative incidence curves for competing relapse and non-relapse mortality, in dataset of 3982 primary and secondary myelofibrosis patients."
-#| fig-cap-location: top
+#| label: MF-cuminc-plot
+#| eval: false
 
-
-
+##| label: MF-cuminc-plot
+##| dev: "testing_cairo"
+##| fig-width: 9
+##| fig-height: 7
+##| echo: false
+##| fig-pos: 'H'
+##| fig-cap: "Stacked non-parametric cumulative incidence curves for competing relapse and non-relapse mortality, in dataset of 3982 primary and secondary myelofibrosis patients."
+##| fig-cap-location: top
+##| fig-ext: "pdf"
+##| 
 np_curves <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ 1, data = dat)
 
 par(family = "Roboto Condensed")
@@ -537,10 +750,14 @@ legend(
 #| label: tbl-pooled-coefs
 
 pooled_mods <- applied_dat_pooled$pooled_coefs
-pooled_mods[, summ := paste0(
-  round(estimate, 2), " [", round(conf.low, 2), ", ", round(conf.high, 2), "]"
+pooled_mods[, ':=' (
+  summ = paste0(
+    round(estimate, 2), 
+    " [", round(conf.low, 2), ", ", 
+    round(conf.high, 2), "]"
+  ),
+  method = factor(method, levels = names(method_labs), labels = method_labs)
 )]
-pooled_mods[, method := factor(method, levels = names(method_labs), labels = method_labs)]
 
 df_tbl <- dcast(pooled_mods, term + method ~ mod_type, value.var = "summ")
 df_tbl[, term := factor(
