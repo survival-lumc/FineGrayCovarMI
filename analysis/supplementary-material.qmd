@@ -19,7 +19,7 @@ author:
     affil-id: 1,7,*
 affiliations:
   - id: 1
-    name: Department of Biomedical Data Sciences, Leiden University Medical Center, the Netherlands
+    name: Department of Biomedical Data Sciences, Leiden University Medical Center, The Netherlands
   - id: 2
     name: Institute of Statistics, Ulm University, Germany
   - id: 3
@@ -31,14 +31,13 @@ affiliations:
   - id: 6
     name: DKMS Clinical Trials Unit, Germany
   - id: 7
-    name: Mathematical Institute, Leiden University, the Netherlands
+    name: Mathematical Institute, Leiden University, The Netherlands
   - id: "*"
     name: Shared senior authorship
 format: 
   pdf:
     documentclass: article
     number-sections: true
-    #mainfont: "NewCenturySchlbk-Roman"
     fontsize: 12pt
     keep-tex: true
     code-block-border-left: false
@@ -49,19 +48,25 @@ format:
       - title.tex
     include-in-header:
       text: |
-        %\usepackage[T1]{fontenc}
-        %\usepackage[utf8]{inputenc}
-        %\usepackage{times}
+        \renewcommand{\thesection}{S\arabic{section}}
+        
+        % For authors on title page
         \usepackage[noblocks]{authblk}
         \renewcommand*{\Authsep}{, }
         \renewcommand*{\Authand}{, }
         \renewcommand*{\Authands}{, }
         \renewcommand\Affilfont{\small}
+        
+        % For the tables
         \usepackage{booktabs}
         \usepackage{array}
         \usepackage{multirow}
         \usepackage{longtable}
-        \renewcommand{\thesection}{S\arabic{section}}
+        
+        % Operators used in main manuscript
+        \usepackage{amsmath,amsfonts,amssymb}
+        \DeclareMathOperator{\logit}{logit}
+        \newcommand{\given}{\,|\,}
 execute:
   echo: true
 editor_options: 
@@ -69,43 +74,26 @@ editor_options:
 knitr:
   opts_chunk:
     fig.path: "figures/"
+    fig-cap-location: top
 ---
 
 ```{r}
 #| label: setup
 #| warning: false
 #| echo: false
-#| fig-cap-location: top # add to Yamls!!
 
-testing_cairo <- function(filename, width, height, ...) {
-  Cairo::CairoPDF(file = filename, width = width, height = height, ...)
-}
-
-
-
-# Add this to quarto pipeline after
+# (!) Add this to quarto pipeline after
 source(here::here("packages.R"))
 library(extrafont)
 library(Cairo)
-#font_import()
-
-#windowsFonts(sans="Roboto")
-#loadfonts(device="win")
-#loadfonts(device="all")
-#loadfonts()
-
-#font_files() |> View()
-
-## Automatically use showtext to render text for future devices
-#showtext_auto()
 
 invisible(lapply(list.files(here::here("R"), full.names = TRUE), source))
 options(contrasts = rep("contr.treatment", 2))
 
 # Theme tings
 cols <- c("#CABEE9", "#7C7189", "#FAE093", "#D04E59", "#BC8E7D", "#2F3D70")
-theme_set( # set base size to 14 instead of 16
-  theme_light(base_size = 16, base_family = "Roboto Condensed") +
+theme_set( 
+  theme_light(base_size = 12, base_family = "Roboto Condensed") +
     theme(
       strip.background = element_rect(fill = cols[2], colour = "white"),
       strip.text = element_text(colour = 'white')
@@ -115,7 +103,7 @@ theme_set( # set base size to 14 instead of 16
 
 # Minimal code example
 
-This is the minimal `R` code companion to section 3.4 of main manuscript. The parameters from the simulation study scenario with $p = 0.15$, random censoring, and correctly specified Fine--Gray were used to generate the example dataset below.
+This is the minimal `R` code companion to section 3.4 of the main manuscript. The parameters from the simulation study scenario with $p = 0.15$, random censoring, and correctly specified Fine--Gray were used to generate the example dataset below.
 
 ```{r}
 #| echo: false
@@ -184,7 +172,7 @@ dat$H1 <- nelsonaalen(data = dat, timevar = "time", statusvar = "D1")
 dat$H2 <- nelsonaalen(data = dat, timevar = "time", statusvar = "D2")
 ```
 
-2.  Multiply impute the potential censoring for those failing from cause 2 using {kmi}, yielding $m$ censoring complete datasets (i.e. with "complete" $V$). Any completely observed covariates that are known to affect the probability of being censored should be included as predictors in the model for the censoring process. {kmi} imputes based on stratified Kaplan--Meier when $Z$ are categorical, and based on a Cox model when at least one of $Z$ are continuous.
+2.  Multiply impute the potential censoring time for those failing from cause 2 using {kmi}, yielding $m$ censoring complete datasets (i.e. with "complete" $V$). Any completely observed covariates that are known to affect the probability of being censored should be included as predictors in the model for the censoring process. {kmi} imputes based on stratified Kaplan--Meier when $Z$ is categorical, and based on a Cox model when $Z$ is continuous.
 
 ```{r}
 # 5 imputed datasets
@@ -345,42 +333,66 @@ dat_mods
 dat_mods[, summary(pool(as.list(mod))), by = "method"]
 ```
 
-\newpage
-
-# Simulation study results
-
-## Additional simulations
+For method FG-SMC, making use of the wrapper function `smcfcs::smcfcs.finegray()` will make it easier to check convergence issues:
 
 ```{r}
-#| echo: false
+#| results: false
 
-testing_cairo <- function(filename, width, height,  ...) {
-  Cairo::CairoPDF(
-    file = filename,
-    width = width,
-    height = height,
-    family = "Roboto Condensed",
-    ...
-  )
-  #grDevices::cairo_pdf
-  #grDevices::cairo_pdf(...)
-}
+# Define methods
+# .. and make sure competing event indicator is numeric
+methods_smcfcs <- mice::make.method(
+  data = dat,
+  defaultMethod = c("norm", "logreg", "mlogit", "podds")
+)
+dat$D <- as.numeric(as.character(dat$D)) 
+
+# Use larger number of iterations to check convergence
+imps <- smcfcs::smcfcs.finegray(
+  originaldata = dat,
+  smformula = "Surv(time, D) ~ X + Z",
+  method = methods_smcfcs,
+  cause = 1,
+  m = 5,
+  numit = 50, 
+  kmi_args = list(formula = ~ 1) # Add censoring predictors here
+)
 ```
+
+Check for convergence:
+
+```{r}
+#| dev: "cairo_pdf"
+#| fig-align: center
+
+plot(imps) +
+  scale_y_continuous(
+    limits = c(0, 1.25),
+    breaks = seq(0, 1.25, by = 0.25)
+  )
+```
+
+\newpage
+
+# Additional simulation study results
 
 ```{r}
 #| echo: false
 #| label: rel-bias-plots-mart
 #| dev: "cairo_pdf"
-##| fig-ext: "pdf"
-
-##| dev: "cairo_pdf"
-##| dev: "testing_cairo"
-##| fig-ext: "pdf"
-##| dev.args: list(family = "Roboto Condensed")
-##| fig-height: 5
-##|z fig-pos: 'H'
-##| fig-cap: "Someting."
-##| fig-cap-location: top
+#| out-width: '100%'
+#| fig-height: 4
+#| fig-align: center
+#| fig-cap-location: bottom
+#| fig-cap: |
+#|    Relative bias (%) in estimating $\{\beta_1,\beta_2\}=\{0.75,0.5\}$, with
+#|    corresponding 95% Monte Carlo confidence interval (constructed using the
+#|    standard normal approximation). These are additional simulations under
+#|    the correctly specified Fine--Gray data-generating mechanism with random
+#|    censoring, with both $p = 0.15$ and $p = 0.65$. The missingness in $X$
+#|    was made to depend on the observed event time $T$ as $\logit
+#|    P(R_X = 0 \given T) = \eta_0 + \eta_1 \log(T + 1)$, with $\eta_1 = -1.5$
+#|    and $\eta_0$ chosen such that 40% of observations in $X$ are missing.
+#| fig-pos: 'H'
 
 tar_load(mar_t_coefs, store = here::here("_targets"))
 
@@ -446,24 +458,30 @@ p <- df |>
   scale_color_manual(values = cols[c(1, 2, 6, 4, 5)]) +
   labs(x = "Method", y = "Relative bias in % (Monte Carlo error 95% interval)")
 
-p #+
- # theme(
-  #  axis.title = element_text(family = "Roboto Condensed")
-  #)
-#   
-# CairoPDF(filename = "hi.pdf")
-# print(p)
-# dev.off()
+p
 ```
-
-## Supplementary simulations: covariate-dependent censoring
 
 ```{r}
 #| echo: false
-#| eval: false
 #| label: rel-bias-covar-cens
-#| dev: "testing_cairo"
-#| fig-ext: "pdf"
+#| dev: "cairo_pdf"
+#| fig-height: 5
+#| out-width: '100%'
+#| fig-align: center
+#| fig-cap-location: bottom
+#| fig-cap: |
+#|    Relative bias (%) in estimating $\{\beta_1,\beta_2\}=\{0.75,0.5\}$, with
+#|    corresponding 95% Monte Carlo confidence interval (constructed using the
+#|    standard normal approximation). These are additional simulations under
+#|    the correctly specified Fine--Gray data-generating mechanism with random
+#|    censoring, with both $p = 0.15$ and $p = 0.65$. The censoring was made
+#|    covariate-dependent with rate $\lambda_C = 0.49e^Z$, and all covariate
+#|    imputation approaches were applied after multiply imputing the potential
+#|    censoring times using either a) a marginal (incorrect) Kaplan--Meier
+#|    estimate of the censoring distribution; b) a Cox model for the censoring
+#|    distribution, conditional on $Z$ (correct). The missingness in $X$ here
+#|    also depended on $Z$.
+#| fig-pos: 'H'
 
 tar_load(covar_cens_coefs, store = here::here("_targets"))
 
@@ -474,7 +492,7 @@ covar_cens_coefs[, ':=' (
   rhs_kmi = factor(
     rhs_kmi, 
     levels = c("1", "Z"), 
-    labels = c("Marginal (incorrect)", "Stratif. by Z (correct)")
+    labels = c("Marginal (incorrect)", "Conditional on Z (correct)")
   )
 )]
 
@@ -483,6 +501,9 @@ df[, ':=' (
   term = factor(term, levels = c("X", "Z"), labels = c("beta[1]", "beta[2]")),
   prob_space = factor(prob_space, levels = c("0.15", "0.65"), labels = c("p~`=`~0.15", "p~`=`~ 0.65"))
 )]
+# Can add italic p here!!
+
+nudgo <- 0.18
 
 df |>
   ggplot(aes(method, relbias, shape = rhs_kmi)) +
@@ -514,16 +535,16 @@ df |>
     lineend = "round",
     linewidth = 4,
     alpha = 0.75,
-    position = position_nudge(x = 0.1, y = 0)
+    position = position_nudge(x = nudgo, y = 0)
   ) +
   stat_summary(
     data = df[rhs_kmi == "Marginal (incorrect)"],
     geom = "point", 
     fun = function(x) mean(x),
-    position = position_nudge(x = 0.1, y = 0)
+    position = position_nudge(x = nudgo, y = 0)
   ) +
   stat_summary(
-    data = df[rhs_kmi == "Stratif. by Z (correct)"],
+    data = df[rhs_kmi == "Conditional on Z (correct)"],
     geom = "segment",
     fun = function(x) mean(x) - crit * (sd(x) / sqrt(length(x))),
     fun.max = function(x) mean(x) + crit * (sd(x) / sqrt(length(x))),
@@ -531,13 +552,13 @@ df |>
     lineend = "round",
     linewidth = 4,
     alpha = 0.75,
-    position = position_nudge(x = -0.1, y = 0)
+    position = position_nudge(x = -nudgo, y = 0)
   ) + 
   stat_summary(
-    data = df[rhs_kmi == "Stratif. by Z (correct)"],
+    data = df[rhs_kmi == "Conditional on Z (correct)"],
     geom = "point", # potentially crossbar
     fun = function(x) mean(x),
-    position = position_nudge(x = -0.1, y = 0)
+    position = position_nudge(x = -nudgo, y = 0)
   ) + 
   scale_color_manual(values = cols[c(1, 2, 6, 4, 5)], guide = "none") +
   labs(
@@ -634,6 +655,7 @@ library(kableExtra)
 # Tbl summary
 df <- applied_dat$dat
 df_predz <- copy(df[, ..sm_predictors]) 
+
 # Re-transform for descriptives
 df_predz[, ':=' (
   age_allo1_decades = (age_allo1_decades + 6) * 10,
@@ -671,7 +693,7 @@ attr(df_predz$WEIGLOSS_allo1, "label") <- ">10% Weight loss prior to transplanta
 
 data_dict_caption <- "Data dictionary. CMV: cytomegalovirus; HLA: human leukocyte antigen; HCT-CI: Hematopoietic stem cell transplantation-comorbidity index; MF: myelofibrosis."
 
-# For thesis:
+# In thesis booklet:
 # tbl_summary(
 #   df_predz,
 #   missing_text = "(Missing)",
@@ -703,20 +725,16 @@ gsub(tbl_test, pattern = "%", replacement = "\\\\%")
 ## Non-parametric cumulative incidence curves
 
 ```{r}
-#| echo: false
 #| label: MF-cuminc-plot
-#| eval: false
+#| dev: "cairo_pdf"
+#| fig-width: 9
+#| fig-height: 7
+#| echo: false
+#| fig-pos: 'H'
+#| fig-align: center
+#| fig-cap: "Stacked non-parametric cumulative incidence curves for competing relapse and non-relapse mortality, in dataset of 3982 primary and secondary myelofibrosis patients."
+#| fig-cap-location: top
 
-##| label: MF-cuminc-plot
-##| dev: "testing_cairo"
-##| fig-width: 9
-##| fig-height: 7
-##| echo: false
-##| fig-pos: 'H'
-##| fig-cap: "Stacked non-parametric cumulative incidence curves for competing relapse and non-relapse mortality, in dataset of 3982 primary and secondary myelofibrosis patients."
-##| fig-cap-location: top
-##| fig-ext: "pdf"
-##| 
 np_curves <- prodlim(Hist(time_ci_adm, status_ci_adm) ~ 1, data = dat)
 
 par(family = "Roboto Condensed")
@@ -811,7 +829,7 @@ df_tbl[, term := factor(
 tb_breaks <- rep(5, length(levels(df_tbl$term)))
 names(tb_breaks) <- levels(df_tbl$term)
 
-pooled_coefs_caption <- "Pooled log hazard ratios [log HR, 95\\% confidence interval] for Fine--Gray model for relapse, cause-specific Cox model relapse, and cause-specific Cox model for non-relapse mortality (NRM)."
+pooled_coefs_caption <- "Pooled log hazard ratios [log HR, 95\\% confidence interval] for Fine--Gray model for relapse, cause-specific Cox model for relapse, and cause-specific Cox model for non-relapse mortality (NRM)."
 
 df_tbl[order(term)][, !c("term")] |>
   kbl(

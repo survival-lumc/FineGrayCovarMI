@@ -366,34 +366,38 @@ df_summ_var[, stat := factor(
   levels = c("empse", "modelse", "cover"),
   labels = c("Emp. SE", "Mod. SE", "Coverage")
 )]
-df_summ_var[, stat_lab := paste0(
-  "bold('", stat, ":')~",
-  round(est, 3), "~(", round(mcse, 3), ")"
+df_summ_var[stat == "Coverage", stat_lab := paste0(
+  "bold('", stat, " %:')~'",
+  format(round(est * 100, 1), nsmall = 1), 
+  "'~('", 
+  format(round(mcse * 100, 1), nsmall = 1), 
+  "')"
 )]
+df_summ_var[, lab_y := ifelse(prob_space == 0.15, 0.26, 0.15)]
 
 for (i in seq_along(covars)) {
   
   cat("\n")
   cat("#### ", covars[i], "\n")
   
-  lab_y <- ifelse(covars[i] == "X", 0.205, 0.125)
-  lims <- if (covars[i] == "X") c(0.05, 0.31) else c(0, 0.2)
+  #lab_y <- ifelse(covars[i] == "X", 0.205, 0.125)
+  lims <- if (covars[i] == "X") c(0.05, 0.3) else c(0, 0.2)
   
   p <- df_summ_var[stat %in% c("Emp. SE", "Mod. SE") & term == covars[i]] |>
     ggplot(aes(method, est, col = method)) +
     geom_text(
       data = df_summ_var[stat == "Coverage" & term == covars[i]],
       aes(label = stat_lab, y = lab_y),
-      hjust = 0,
+      hjust = 1,
       parse = TRUE,
       family = "Roboto Condensed",
       size = 3
     ) +
-    geom_linerange(
-      aes(xmin = method, xmax = method, ymin = 0, ymax = est, linetype = stat),
-      position = position_dodge(width = dodge_w),
-      linewidth = 0.5
-    ) +
+    #geom_linerange(
+    #  aes(xmin = method, xmax = method, ymin = 0, ymax = est, linetype = stat),
+    #  position = position_dodge(width = dodge_w),
+    #  linewidth = 0.5
+    #) +
     geom_point(
       size = 2,
       aes(shape = stat),
@@ -414,9 +418,11 @@ for (i in seq_along(covars)) {
     scale_x_discrete(limits = rev) +
     facet_grid(
       failure_time_model * censoring_type ~ prob_space,
-      labeller = all_labels
+      labeller = all_labels,
+      scales = "free"
     ) +
-    coord_flip(ylim = lims) +
+    #coord_flip(ylim = lims) +
+    coord_flip() +
     guides(colour = "none") +
     theme(
       legend.position = "top", 
