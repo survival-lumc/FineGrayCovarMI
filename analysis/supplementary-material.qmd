@@ -39,7 +39,7 @@ format:
     documentclass: article
     number-sections: true
     fontsize: 12pt
-    keep-tex: true
+    #keep-tex: true
     code-block-border-left: false
     papersize: a4
     geometry:

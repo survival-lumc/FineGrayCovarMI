@@ -324,7 +324,7 @@ summarized_extra_sims <- list(
 list(
   applied_example,
   summarized_sims,
-  summarized_extra_sims
-  #tar_quarto(simulation_results, path = "analysis/simulation-results.qmd"),
-  #tar_quarto(supplement, path = "analysis/supplementary-material.qmd")
+  summarized_extra_sims,
+  tar_quarto(simulation_results, path = "analysis/simulation-results.qmd"),
+  tar_quarto(supplement, path = "analysis/supplementary-material.qmd")
 )
