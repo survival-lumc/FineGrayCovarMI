@@ -10,7 +10,7 @@ The Fine&ndash;Gray model for the subdistribution hazard is commonly used for es
 
 ## Usage 
 
-The analyses for this article are structured using the [`{targets}`](https://github.com/ropensci/targets) R package. Code for the individual targets are in the [_targets.R](./_targets.R) file.
+The analyses for this article are structured using the [`{targets}`](https://github.com/ropensci/targets) R package (version 1.4.0 needed to reproduce results!). Code for the individual targets are in the [_targets.R](./_targets.R) file.
 
 ![](analysis/targets-pipeline.png)
 
